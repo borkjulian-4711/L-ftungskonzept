@@ -25,6 +25,9 @@ if "project" not in st.session_state:
 if "counter" not in st.session_state:
     st.session_state["counter"] = 1
 
+if "auto_df" not in st.session_state:
+    st.session_state["auto_df"] = None
+
 
 st.title("🌀 Lüftungskonzept nach DIN 1946-6")
 
@@ -33,9 +36,9 @@ st.title("🌀 Lüftungskonzept nach DIN 1946-6")
 # -----------------------------
 st.header("Projektdaten")
 
-projekt = st.text_input("Projektname")
-adresse = st.text_input("Adresse")
-bearbeiter = st.text_input("Bearbeiter")
+projekt = st.text_input("Projektname", key="projekt")
+adresse = st.text_input("Adresse", key="adresse")
+bearbeiter = st.text_input("Bearbeiter", key="bearbeiter")
 
 meta = {
     "projekt": projekt,
@@ -48,9 +51,9 @@ meta = {
 # -----------------------------
 st.header("Wohnungen")
 
-suffix = st.text_input("Bezeichnung (optional)")
+suffix = st.text_input("Bezeichnung (optional)", key="suffix")
 
-if st.button("➕ Wohnung hinzufügen"):
+if st.button("➕ Wohnung hinzufügen", key="add_flat"):
 
     name = f"WE{st.session_state['counter']}"
 
@@ -66,7 +69,8 @@ if not st.session_state["project"]:
 
 flat = st.selectbox(
     "Wohnung auswählen",
-    list(st.session_state["project"].keys())
+    list(st.session_state["project"].keys()),
+    key="flat_select"
 )
 
 # -----------------------------
@@ -74,8 +78,17 @@ flat = st.selectbox(
 # -----------------------------
 st.header("Eingabedaten")
 
-ANE = st.number_input("Fläche Nutzungseinheit (m²)", 30, 300, 80)
-fWS = st.selectbox("Faktor fWS", [0.2, 0.3, 0.4])
+ANE = st.number_input(
+    "Fläche Nutzungseinheit (m²)",
+    30, 300, 80,
+    key="ane"
+)
+
+fWS = st.selectbox(
+    "Faktor fWS",
+    [0.2, 0.3, 0.4],
+    key="fws"
+)
 
 # -----------------------------
 # DIN KATEGORIEN
@@ -94,19 +107,8 @@ din18017_kategorien = [
 ]
 
 # -----------------------------
-# AUTO-LUFTFÜHRUNG BUTTON
+# DATENQUELLE (AUTO ODER DEFAULT)
 # -----------------------------
-st.subheader("Intelligente Luftführung")
-
-if st.button("🧠 Luftführung automatisch erzeugen"):
-    st.session_state["auto_df"] = auto_connect_rooms(df_rooms)
-    st.rerun()
-
-# -----------------------------
-# RAUMTABELLE
-# -----------------------------
-st.subheader("Räume & Luftführung")
-
 default_df = pd.DataFrame({
     "Raum": ["Wohnzimmer", "Flur", "Bad"],
     "Typ": ["Zuluft", "Überström", "Abluft"],
@@ -116,29 +118,51 @@ default_df = pd.DataFrame({
     "Überströmt nach": ["Flur", "Bad", ""]
 })
 
-if "auto_df" in st.session_state:
+if st.session_state["auto_df"] is not None:
     default_df = st.session_state["auto_df"]
+
+# -----------------------------
+# RAUMTABELLE
+# -----------------------------
+st.subheader("Räume & Luftführung")
 
 df_rooms = st.data_editor(
     default_df,
     num_rows="dynamic",
-    use_container_width=True
+    use_container_width=True,
+    key="rooms_editor",
+    column_config={
+
+        "Typ": st.column_config.SelectboxColumn(
+            options=["Zuluft", "Überström", "Abluft"]
+        ),
+
+        "Kategorie (DIN 1946-6)": st.column_config.SelectboxColumn(
+            options=raum_kategorien
+        ),
+
+        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(
+            options=din18017_kategorien
+        )
+    }
 )
 
 # -----------------------------
-# AUTO-LUFTFÜHRUNG (JETZT RICHTIG!)
+# INTELLIGENTE LUFTFÜHRUNG
 # -----------------------------
 st.subheader("Intelligente Luftführung")
 
-if st.button("🧠 Luftführung automatisch erzeugen"):
+if st.button("🧠 Luftführung automatisch erzeugen", key="auto_airflow"):
     st.session_state["auto_df"] = auto_connect_rooms(df_rooms)
     st.rerun()
+
 # -----------------------------
 # TEXTVARIANTE
 # -----------------------------
 text_mode = st.selectbox(
     "Textvariante",
-    ["lang","kurz","behoerde"]
+    ["lang", "kurz", "behoerde"],
+    key="text_mode"
 )
 
 # -----------------------------
@@ -147,14 +171,14 @@ text_mode = st.selectbox(
 errors, warnings = validate_inputs(df_rooms)
 
 if errors:
-    st.error("Fehler:")
+    st.error("❌ Fehler in den Eingaben:")
     for e in errors:
-        st.write(e)
+        st.write("- " + e)
 
 elif warnings:
-    st.warning("Hinweise:")
+    st.warning("⚠️ Hinweise:")
     for w in warnings:
-        st.write(w)
+        st.write("- " + w)
 
 # -----------------------------
 # AUTO-BERECHNUNG
@@ -168,15 +192,19 @@ if not errors:
     paths = calculate_paths(G, df_res)
     n_uld, uld_edges = calculate_uld_from_graph(G, df_res, paths)
 
-    text = generate_concept_text(ANE, {
-        "q_required": q_req,
-        "q_abluft": q_ab,
-        "delta": delta,
-        "df": df_res,
-        "n_ald": n_ald,
-        "n_uld": n_uld,
-        "uld_edges": uld_edges
-    }, mode=text_mode)
+    text = generate_concept_text(
+        ANE,
+        {
+            "q_required": q_req,
+            "q_abluft": q_ab,
+            "delta": delta,
+            "df": df_res,
+            "n_ald": n_ald,
+            "n_uld": n_uld,
+            "uld_edges": uld_edges
+        },
+        mode=text_mode
+    )
 
     st.session_state["project"][flat] = {
         "meta": meta,
@@ -193,32 +221,41 @@ if not errors:
     }
 
 # -----------------------------
-# ERGEBNIS
+# ERGEBNISSE
 # -----------------------------
 if flat in st.session_state["project"]:
 
-    data = st.session_state["project"][flat]["res"]
+    flat_data = st.session_state["project"][flat]
 
-    st.header("Ergebnisse")
+    if "res" in flat_data:
 
-    st.write("Feuchteschutz:", data["q_required"])
-    st.write("Abluft:", data["q_abluft"])
-    st.write("ALD:", data["n_ald"])
-    st.write("ÜLD:", data["n_uld"])
+        data = flat_data["res"]
 
-    for (a,b), d in data["uld_edges"].items():
-        st.write(f"{a} → {b}: {d['Anzahl']} ÜLD")
+        st.header("Ergebnisse")
 
-    st.text_area("Text", data["text"], height=300)
+        st.write("Feuchteschutz:", round(data["q_required"], 1))
+        st.write("Abluft:", round(data["q_abluft"], 1))
+        st.write("ALD:", data["n_ald"])
+        st.write("ÜLD:", data["n_uld"])
+
+        st.subheader("Überströmöffnungen")
+
+        for (a, b), d in data["uld_edges"].items():
+            st.write(f"{a} → {b}: {d['Anzahl']} ÜLD ({d['Volumenstrom']} m³/h)")
+
+        st.subheader("Konzeptbeschreibung")
+        st.text_area("Text", data["text"], height=300)
 
 # -----------------------------
-# EXPORT
+# PDF EXPORT
 # -----------------------------
-if st.button("📄 PDF Export"):
+st.header("Export")
+
+if st.button("📄 Gesamt-PDF erzeugen", key="pdf_export"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
     create_multi_pdf(tmp.name, st.session_state["project"])
 
     with open(tmp.name, "rb") as f:
-        st.download_button("Download", f)
+        st.download_button("Download PDF", f)
