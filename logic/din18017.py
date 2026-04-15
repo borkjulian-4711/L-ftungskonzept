@@ -2,9 +2,10 @@ def get_abluft(room_type, category):
 
     base = {
         "Bad": 40,
+        "Duschraum": 40,
         "WC": 25,
         "Küche": 60,
-        "Sonstiger Abluftraum": 30
+        "Hauswirtschaftsraum": 30
     }.get(room_type, 0)
 
     factor = {
