@@ -2,12 +2,20 @@ import streamlit as st
 import pandas as pd
 import tempfile
 
-from logic.ventilation import *
+from logic.ventilation import (
+    calculate_ventilation,
+    calculate_ald,
+    build_graph_from_rooms,
+    calculate_paths,
+    calculate_uld_from_graph
+)
+
 from logic.text_generator import generate_concept_text
 from export.pdf_generator import create_multi_pdf
 
+
 # -----------------------------
-# Projekt State
+# SESSION STATE
 # -----------------------------
 if "project" not in st.session_state:
     st.session_state["project"] = {}
@@ -15,10 +23,11 @@ if "project" not in st.session_state:
 if "counter" not in st.session_state:
     st.session_state["counter"] = 1
 
-st.title("🌀 Lüftungskonzept Tool")
+
+st.title("🌀 Lüftungskonzept nach DIN 1946-6")
 
 # -----------------------------
-# Projektinfos (Anhang E)
+# PROJEKTDATEN
 # -----------------------------
 st.header("Projektdaten")
 
@@ -33,15 +42,16 @@ meta = {
 }
 
 # -----------------------------
-# Wohnung erstellen
+# WOHNUNGEN
 # -----------------------------
 st.header("Wohnungen")
 
-suffix = st.text_input("Zusatz (optional)")
+suffix = st.text_input("Bezeichnung (optional)")
 
 if st.button("➕ Wohnung hinzufügen"):
 
     name = f"WE{st.session_state['counter']}"
+
     if suffix:
         name += f" – {suffix}"
 
@@ -49,34 +59,109 @@ if st.button("➕ Wohnung hinzufügen"):
     st.session_state["counter"] += 1
 
 if not st.session_state["project"]:
+    st.warning("Bitte mindestens eine Wohnung anlegen")
     st.stop()
 
-flat = st.selectbox("Wohnung wählen", list(st.session_state["project"].keys()))
+flat = st.selectbox(
+    "Wohnung auswählen",
+    list(st.session_state["project"].keys())
+)
 
 # -----------------------------
-# Eingaben
+# PARAMETER
 # -----------------------------
-ANE = st.number_input("Fläche", 30, 300, 80)
-fWS = st.selectbox("fWS", [0.2,0.3,0.4])
+st.header("Eingabedaten")
+
+ANE = st.number_input("Fläche Nutzungseinheit (m²)", 30, 300, 80)
+fWS = st.selectbox("Faktor fWS", [0.2, 0.3, 0.4])
+
+# -----------------------------
+# DIN KATEGORIEN
+# -----------------------------
+raum_kategorien = [
+    "Wohnzimmer",
+    "Schlafzimmer",
+    "Kinderzimmer",
+    "Arbeitszimmer",
+    "Küche",
+    "Bad",
+    "Duschraum",
+    "WC",
+    "Flur",
+    "Abstellraum",
+    "Hauswirtschaftsraum"
+]
+
+din18017_kategorien = [
+    "",
+    "R-ZD (ca. 40 m³/h)",
+    "R-BD (ca. 32 m³/h)",
+    "R-PN (ca. 48 m³/h)",
+    "R-PD (ca. 40 m³/h)"
+]
+
+# -----------------------------
+# RAUMTABELLE
+# -----------------------------
+st.subheader("Räume & Luftführung")
 
 df_rooms = st.data_editor(
     pd.DataFrame({
-        "Raum":["Wohnzimmer","Bad"],
-        "Typ":["Zuluft","Abluft"],
-        "Innenliegend":[False,True],
-        "Kategorie":["Wohnzimmer","Bad"],
-        "DIN 18017 Kategorie":["","R-ZD"],
-        "Überströmt nach":["Bad",""]
+        "Raum": ["Wohnzimmer", "Flur", "Bad"],
+        "Typ": ["Zuluft", "Überström", "Abluft"],
+        "Innenliegend": [False, False, True],
+        "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Flur", "Bad"],
+        "DIN 18017 Kategorie": ["", "", "R-ZD (ca. 40 m³/h)"],
+        "Überströmt nach": ["Flur", "Bad", ""]
     }),
-    num_rows="dynamic"
+    num_rows="dynamic",
+    use_container_width=True,
+    column_config={
+
+        "Raum": st.column_config.TextColumn("Raumname"),
+
+        "Typ": st.column_config.SelectboxColumn(
+            "Raumtyp",
+            options=["Zuluft", "Überström", "Abluft"]
+        ),
+
+        "Kategorie (DIN 1946-6)": st.column_config.SelectboxColumn(
+            "Raumkategorie",
+            options=raum_kategorien
+        ),
+
+        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(
+            "Abluft nach DIN 18017-3",
+            options=din18017_kategorien
+        ),
+
+        "Innenliegend": st.column_config.CheckboxColumn("Innenliegend"),
+
+        "Überströmt nach": st.column_config.SelectboxColumn(
+            "Überströmt nach",
+            options=[""] + ["Wohnzimmer", "Flur", "Bad"]
+        )
+    }
 )
 
-mode = st.selectbox("Text", ["lang","kurz","behoerde"])
+# -----------------------------
+# TEXTVARIANTE
+# -----------------------------
+st.subheader("Textausgabe")
+
+text_mode = st.selectbox(
+    "Textvariante wählen",
+    {
+        "Langtext (Standard)": "lang",
+        "Kurztext": "kurz",
+        "Behördentext": "behoerde"
+    }
+)
 
 # -----------------------------
-# Berechnung
+# BERECHNUNG
 # -----------------------------
-if st.button("Berechnen"):
+if st.button("🔄 Berechnen"):
 
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald = calculate_ald(delta)
@@ -85,15 +170,19 @@ if st.button("Berechnen"):
     paths = calculate_paths(G, df_res)
     n_uld, uld_edges = calculate_uld_from_graph(G, df_res, paths)
 
-    text = generate_concept_text(ANE, {
-        "q_required": q_req,
-        "q_abluft": q_ab,
-        "delta": delta,
-        "df": df_res,
-        "n_ald": n_ald,
-        "n_uld": n_uld,
-        "uld_edges": uld_edges
-    }, mode)
+    text = generate_concept_text(
+        ANE,
+        {
+            "q_required": q_req,
+            "q_abluft": q_ab,
+            "delta": delta,
+            "df": df_res,
+            "n_ald": n_ald,
+            "n_uld": n_uld,
+            "uld_edges": uld_edges
+        },
+        mode=text_mode
+    )
 
     st.session_state["project"][flat] = {
         "meta": meta,
@@ -110,15 +199,38 @@ if st.button("Berechnen"):
     }
 
 # -----------------------------
-# Export
+# ERGEBNISSE
+# -----------------------------
+if flat in st.session_state["project"]:
+
+    data = st.session_state["project"][flat]["res"]
+
+    st.header("Ergebnisse")
+
+    st.write("Feuchteschutz:", round(data["q_required"], 1))
+    st.write("Abluft:", round(data["q_abluft"], 1))
+    st.write("ALD:", data["n_ald"])
+    st.write("ÜLD:", data["n_uld"])
+
+    st.subheader("Überströmöffnungen")
+
+    for (a, b), d in data["uld_edges"].items():
+        st.write(f"{a} → {b}: {d['Anzahl']} ÜLD ({d['Volumenstrom']} m³/h)")
+
+    st.subheader("Konzeptbeschreibung")
+
+    st.text_area("Text", data["text"], height=300)
+
+# -----------------------------
+# PDF EXPORT
 # -----------------------------
 st.header("Export")
 
-if st.button("📄 Gesamt-PDF"):
+if st.button("📄 Gesamt-PDF erzeugen"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
     create_multi_pdf(tmp.name, st.session_state["project"])
 
     with open(tmp.name, "rb") as f:
-        st.download_button("Download", f)
+        st.download_button("Download PDF", f)
