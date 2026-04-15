@@ -39,13 +39,13 @@ def calculate_ald(delta, df_rooms):
     return n_ald, dist
 
 
-def build_real_graph(df_edges):
+def build_graph_from_edges(edge_list):
 
     G = nx.DiGraph()
 
-    for _, row in df_edges.iterrows():
-        if row["Von"] and row["Nach"]:
-            G.add_edge(row["Von"], row["Nach"])
+    for e in edge_list:
+        if e[0] and e[1]:
+            G.add_edge(e[0], e[1])
 
     return G
 
@@ -72,6 +72,7 @@ def calculate_uld_from_paths(paths):
 
     for path in paths:
         for i in range(len(path)-1):
+
             edge = (path[i], path[i+1])
 
             if edge not in edge_load:
@@ -88,13 +89,3 @@ def calculate_uld_from_paths(paths):
         total += n
 
     return total, result
-def build_graph_from_edges(edge_list):
-
-    import networkx as nx
-
-    G = nx.DiGraph()
-
-    for e in edge_list:
-        G.add_edge(e[0], e[1])
-
-    return G
