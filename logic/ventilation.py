@@ -98,13 +98,53 @@ def calculate_paths(G, df_rooms):
 # -----------------------------
 # ÜLD direkt aus Verbindungen
 # -----------------------------
-def calculate_uld_from_graph(G):
+def calculate_uld_from_graph(G, df_rooms, paths):
 
-    uld = {}
+    q_per_uld = 30  # m³/h pro ÜLD
 
-    for edge in G.edges():
-        uld[edge] = 1  # Basisannahme: 1 ÜLD je Verbindung
+    # -----------------------------
+    # Abluftströme je Raum
+    # -----------------------------
+    room_flows = {
+        row["Raum"]: row["Abluft (m³/h)"]
+        for _, row in df_rooms.iterrows()
+    }
 
-    total = len(uld)
+    # -----------------------------
+    # Lasten je Verbindung sammeln
+    # -----------------------------
+    edge_flow = {}
 
-    return total, uld
+    for path in paths:
+
+        # Ziel = Abluftraum
+        end_room = path[-1]
+        q = room_flows.get(end_room, 0)
+
+        for i in range(len(path) - 1):
+
+            edge = (path[i], path[i + 1])
+
+            if edge not in edge_flow:
+                edge_flow[edge] = 0
+
+            edge_flow[edge] += q
+
+    # -----------------------------
+    # ÜLD berechnen
+    # -----------------------------
+    uld_edges = {}
+    total = 0
+
+    for edge, q in edge_flow.items():
+
+        n = max(1, math.ceil(q / q_per_uld))
+
+        uld_edges[edge] = {
+            "Volumenstrom": round(q, 1),
+            "Anzahl": n
+        }
+
+        total += n
+
+    return total, uld_edges
