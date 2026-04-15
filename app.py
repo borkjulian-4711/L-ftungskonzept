@@ -80,17 +80,8 @@ fWS = st.selectbox("Faktor fWS", [0.2, 0.3, 0.4])
 # DIN KATEGORIEN
 # -----------------------------
 raum_kategorien = [
-    "Wohnzimmer",
-    "Schlafzimmer",
-    "Kinderzimmer",
-    "Arbeitszimmer",
-    "Küche",
-    "Bad",
-    "Duschraum",
-    "WC",
-    "Flur",
-    "Abstellraum",
-    "Hauswirtschaftsraum"
+    "Wohnzimmer","Schlafzimmer","Kinderzimmer","Arbeitszimmer",
+    "Küche","Bad","Duschraum","WC","Flur","Abstellraum","Hauswirtschaftsraum"
 ]
 
 din18017_kategorien = [
@@ -160,26 +151,25 @@ text_mode = st.selectbox(
 )
 
 # -----------------------------
-# BERECHNUNG + VALIDIERUNG
+# VALIDIERUNG
 # -----------------------------
-if st.button("🔄 Berechnen"):
+errors, warnings = validate_inputs(df_rooms)
 
-    errors, warnings = validate_inputs(df_rooms)
+if errors:
+    st.error("❌ Fehler in den Eingaben:")
+    for e in errors:
+        st.write("- " + e)
 
-    # Fehler stoppen Berechnung
-    if errors:
-        st.error("❌ Fehler in den Eingaben:")
-        for e in errors:
-            st.write("- " + e)
-        st.stop()
+elif warnings:
+    st.warning("⚠️ Hinweise:")
+    for w in warnings:
+        st.write("- " + w)
 
-    # Warnungen anzeigen
-    if warnings:
-        st.warning("⚠️ Hinweise:")
-        for w in warnings:
-            st.write("- " + w)
+# -----------------------------
+# AUTO-BERECHNUNG
+# -----------------------------
+if not errors:
 
-    # Berechnung
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald = calculate_ald(delta)
 
@@ -221,27 +211,26 @@ if st.button("🔄 Berechnen"):
 # -----------------------------
 if flat in st.session_state["project"]:
 
-    data = st.session_state["project"][flat]["res"]
+    flat_data = st.session_state["project"][flat]
 
-    st.header("Ergebnisse")
+    if "res" in flat_data:
 
-    st.write("Feuchteschutz:", round(data["q_required"], 1))
-    st.write("Abluft:", round(data["q_abluft"], 1))
-    st.write("ALD:", data["n_ald"])
-    st.write("ÜLD:", data["n_uld"])
+        data = flat_data["res"]
 
-    st.subheader("Überströmöffnungen")
+        st.header("Ergebnisse")
 
-    for (a, b), d in data["uld_edges"].items():
-        st.write(f"{a} → {b}: {d['Anzahl']} ÜLD ({d['Volumenstrom']} m³/h)")
+        st.write("Feuchteschutz:", round(data["q_required"], 1))
+        st.write("Abluft:", round(data["q_abluft"], 1))
+        st.write("ALD:", data["n_ald"])
+        st.write("ÜLD:", data["n_uld"])
 
-    st.subheader("Konzeptbeschreibung")
-    st.text_area("Text", data["text"], height=300)
+        st.subheader("Überströmöffnungen")
 
-    if "warnings" in data and data["warnings"]:
-        st.subheader("Hinweise")
-        for w in data["warnings"]:
-            st.warning(w)
+        for (a, b), d in data["uld_edges"].items():
+            st.write(f"{a} → {b}: {d['Anzahl']} ÜLD ({d['Volumenstrom']} m³/h)")
+
+        st.subheader("Konzeptbeschreibung")
+        st.text_area("Text", data["text"], height=300)
 
 # -----------------------------
 # PDF EXPORT
