@@ -122,25 +122,17 @@ if "auto_df" in st.session_state:
 df_rooms = st.data_editor(
     default_df,
     num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-
-        "Typ": st.column_config.SelectboxColumn(
-            options=["Zuluft","Überström","Abluft"]
-        ),
-
-        "Kategorie (DIN 1946-6)": st.column_config.SelectboxColumn(
-            options=raum_kategorien
-        ),
-
-        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(
-            options=din18017_kategorien
-        ),
-
-        "Überströmt nach": st.column_config.TextColumn()
-    }
+    use_container_width=True
 )
 
+# -----------------------------
+# AUTO-LUFTFÜHRUNG (JETZT RICHTIG!)
+# -----------------------------
+st.subheader("Intelligente Luftführung")
+
+if st.button("🧠 Luftführung automatisch erzeugen"):
+    st.session_state["auto_df"] = auto_connect_rooms(df_rooms)
+    st.rerun()
 # -----------------------------
 # TEXTVARIANTE
 # -----------------------------
