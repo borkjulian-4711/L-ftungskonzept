@@ -55,9 +55,16 @@ df_rooms = st.data_editor(
         "Kategorie": st.column_config.SelectboxColumn(
             options=raum_kategorien
         ),
-        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(
-            options=["", "R-ZD", "R-BD", "R-PN", "R-PD"]
-        )
+"DIN 18017 Kategorie": st.column_config.SelectboxColumn(
+    "DIN 18017 Kategorie (inkl. Volumenstrom)",
+    options=[
+        "",
+        "R-ZD (ca. 40 m³/h)",
+        "R-BD (ca. 32 m³/h)",
+        "R-PN (ca. 48 m³/h)",
+        "R-PD (ca. 40 m³/h)"
+    ]
+)
     }
 )
 
