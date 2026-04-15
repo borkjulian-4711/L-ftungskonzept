@@ -7,9 +7,9 @@ import networkx as nx
 from logic.ventilation import (
     calculate_ventilation,
     calculate_ald,
-    build_graph,
+    build_graph_from_rooms,
     calculate_paths,
-    calculate_uld
+    calculate_uld_from_graph
 )
 
 from logic.checks import run_checks
@@ -49,17 +49,18 @@ din18017_kategorien = [
 ]
 
 # -----------------------------
-# Räume
+# Raumtabelle
 # -----------------------------
-st.subheader("Räume")
+st.subheader("Räume und Luftführung")
 
 df_rooms = st.data_editor(
     pd.DataFrame({
-        "Raum": ["Wohnzimmer", "Bad"],
-        "Typ": ["Zuluft", "Abluft"],
-        "Innenliegend": [False, True],
-        "Kategorie": ["Wohnzimmer", "Bad"],
-        "DIN 18017 Kategorie": ["", "R-ZD (ca. 40 m³/h)"]
+        "Raum": ["Wohnzimmer", "Flur", "Bad"],
+        "Typ": ["Zuluft", "Überström", "Abluft"],
+        "Innenliegend": [False, False, True],
+        "Kategorie": ["Wohnzimmer", "Flur", "Bad"],
+        "DIN 18017 Kategorie": ["", "", "R-ZD (ca. 40 m³/h)"],
+        "Überströmt nach": ["Flur", "Bad", ""]
     }),
     num_rows="dynamic",
     use_container_width=True,
@@ -80,22 +81,10 @@ df_rooms = st.data_editor(
             options=din18017_kategorien
         ),
 
-        "Innenliegend": st.column_config.CheckboxColumn("Innenliegend")
+        "Überströmt nach": st.column_config.TextColumn(
+            "Überströmt nach (Raumname)"
+        )
     }
-)
-
-# -----------------------------
-# Verbindungen
-# -----------------------------
-st.subheader("Raumverbindungen")
-
-df_edges = st.data_editor(
-    pd.DataFrame({
-        "Von": ["Wohnzimmer"],
-        "Nach": ["Bad"]
-    }),
-    num_rows="dynamic",
-    use_container_width=True
 )
 
 # -----------------------------
@@ -106,9 +95,9 @@ if st.button("Berechnen"):
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald = calculate_ald(delta)
 
-    G = build_graph(df_res, df_edges)
+    G = build_graph_from_rooms(df_res)
     paths = calculate_paths(G, df_res)
-    n_uld, _ = calculate_uld(paths)
+    n_uld, uld_edges = calculate_uld_from_graph(G)
 
     errors, warnings = run_checks(df_res, G, delta)
 
@@ -119,6 +108,7 @@ if st.button("Berechnen"):
         "df": df_res,
         "n_ald": n_ald,
         "n_uld": n_uld,
+        "uld_edges": uld_edges,
         "paths": paths,
         "errors": errors,
         "warnings": warnings,
@@ -145,12 +135,19 @@ if "res" in st.session_state:
 
     # Raumwerte
     st.subheader("Raumwerte")
+
     st.dataframe(
         r["df"][["Raum", "Kategorie", "DIN 18017 Kategorie", "Abluft (m³/h)"]],
         use_container_width=True
     )
 
-    # Fehler
+    # ÜLD je Verbindung
+    st.subheader("Überströmöffnungen (ÜLD)")
+
+    for (a, b), n in r["uld_edges"].items():
+        st.write(f"{a} → {b}: {n} ÜLD")
+
+    # Prüfung
     st.subheader("Prüfung")
 
     for e in r["errors"]:
