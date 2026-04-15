@@ -2,95 +2,73 @@ import streamlit as st
 import pandas as pd
 import tempfile
 
-from logic.ventilation import calculate_ventilation, calculate_ald_uld
+from logic.ventilation import (
+    calculate_ventilation,
+    calculate_ald,
+    build_airflow_graph,
+    check_airflow,
+    calculate_uld_from_graph
+)
+
 from export.pdf_generator import create_din_pdf
 
 st.title("🌀 Lüftungskonzept Tool")
 
-# -----------------------------
-# Sidebar
-# -----------------------------
-st.sidebar.header("Projekt")
-
-ANE = st.sidebar.number_input("Fläche (m²)", 30, 300, 80)
-
+ANE = st.sidebar.number_input("Fläche", 30, 300, 80)
 fWS = st.sidebar.selectbox("fWS", [0.2, 0.3, 0.4])
 
-# -----------------------------
-# Räume
-# -----------------------------
-st.subheader("Räume")
-
 df_rooms = st.data_editor(pd.DataFrame({
-    "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
-    "Typ": ["Zuluft", "Zuluft", "Abluft"],
+    "Raum": ["Wohnzimmer", "Flur", "Bad"],
+    "Typ": ["Zuluft", "Überström", "Abluft"],
     "Innenliegend": [False, False, True],
-    "Kategorie": ["", "", "Bad"]
+    "Kategorie": ["", "", "Bad"],
+    "DIN 18017 Kategorie": ["", "", "R-ZD"]
 }), num_rows="dynamic")
 
-# -----------------------------
-# Berechnung
-# -----------------------------
 if st.button("Berechnen"):
 
     q_required, q_abluft, delta, df_result = calculate_ventilation(df_rooms, ANE, fWS)
-    n_ald, n_uld, dist = calculate_ald_uld(delta, df_result)
+
+    n_ald, ald_dist = calculate_ald(delta, df_result)
+
+    G = build_airflow_graph(df_result)
+
+    paths, missing = check_airflow(G, df_result)
+
+    n_uld, uld_edges = calculate_uld_from_graph(G, paths, df_result)
 
     st.subheader("Ergebnisse")
+    st.write("Feuchteschutz:", q_required)
+    st.write("Abluft:", q_abluft)
 
-    col1, col2, col3 = st.columns(3)
+    st.subheader("ALD")
+    st.write(n_ald, "Stück")
 
-    col1.metric("Feuchteschutz", f"{round(q_required,1)} m³/h")
-    col2.metric("Abluft", f"{round(q_abluft,1)} m³/h")
+    st.subheader("Luftpfade")
+    for p in paths:
+        st.write(" → ".join(p))
 
-    if delta > 0:
-        col3.metric("Fehlend", f"{round(delta,1)} m³/h", delta_color="inverse")
-    else:
-        col3.metric("Reserve", f"{round(abs(delta),1)} m³/h")
+    if missing:
+        st.error(f"Keine Verbindung für: {missing}")
 
-    st.divider()
+    st.subheader("ÜLD (Kanten)")
+    for edge, n in uld_edges.items():
+        st.write(f"{edge[0]} → {edge[1]}: {n} ÜLD")
 
-    st.subheader("ALD / ÜLD")
-
-    st.write(f"**ALD:** {n_ald} Stück")
-    st.write(f"**ÜLD:** {n_uld} Stück")
-
-    if dist:
-        st.write("**Verteilung ALD:**")
-        for room, count in dist.items():
-            st.write(f"- {room}: {count} Stück")
-
-    st.divider()
-
-    st.subheader("Raumübersicht")
-    st.dataframe(df_result, use_container_width=True)
-
-    # -----------------------------
-    # PDF
-    # -----------------------------
-    text = f"""
-Feuchteschutz: {q_required} m³/h  
-Abluft: {q_abluft} m³/h  
-
-ALD: {n_ald} Stück  
-ÜLD: {n_uld} Stück  
-"""
-
-    st.divider()
-
-    if st.button("📄 PDF erzeugen"):
+    if st.button("PDF"):
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
         create_din_pdf(
             tmp.name,
-            {"name": "Projekt", "ANE": ANE, "fWS": fWS},
-            {"q_required": q_required, "q_abluft": q_abluft, "delta": delta},
+            {"ANE": ANE},
+            {"q_required": q_required, "q_abluft": q_abluft},
             df_result,
-            text,
+            "",
             n_ald,
-            n_uld
+            n_uld,
+            paths
         )
 
         with open(tmp.name, "rb") as f:
-            st.download_button("📥 Download PDF", f, file_name="lueftungskonzept.pdf")
+            st.download_button("Download", f)
