@@ -2,6 +2,7 @@ from reportlab.platypus import *
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
+from datetime import datetime
 
 styles = getSampleStyleSheet()
 
@@ -27,15 +28,15 @@ def table_style():
 # -----------------------------
 # Header/Footer
 # -----------------------------
-def add_page_numbers(canvas, doc):
-    page_num = canvas.getPageNumber()
-    text = f"Seite {page_num}"
-
+def header_footer(canvas, doc):
     canvas.setFont("Helvetica", 9)
-    canvas.drawRightString(550, 15, text)
 
     # Header
-    canvas.drawString(30, 820, "Lüftungskonzept DIN 1946-6")
+    canvas.drawString(30, 820, "Lüftungskonzept nach DIN 1946-6")
+
+    # Footer
+    page_num = canvas.getPageNumber()
+    canvas.drawRightString(550, 15, f"Seite {page_num}")
 
 
 # -----------------------------
@@ -55,53 +56,54 @@ def create_pdf(filename, ANE, res):
     elements = []
 
     # -----------------------------
-    # Titel
+    # KOPFBEREICH (FORMULAR)
     # -----------------------------
-    elements.append(Paragraph("<b>LÜFTUNGSKONZEPT</b>", styles["Title"]))
+    elements.append(Paragraph("<b>LÜFTUNGSKONZEPT NACH DIN 1946-6</b>", styles["Title"]))
+    elements.append(Spacer(1, 8))
+
+    projekt_table = Table([
+        ["Projekt", "Wohnung 1"],
+        ["Adresse", "—"],
+        ["Bearbeiter", "—"],
+        ["Datum", datetime.today().strftime("%d.%m.%Y")]
+    ], colWidths=[150, 350])
+
+    projekt_table.setStyle(table_style())
+    elements.append(projekt_table)
     elements.append(Spacer(1, 10))
 
     # -----------------------------
-    # 1. Allgemein
-    # -----------------------------
-    elements.append(Paragraph("<b>1. Allgemeine Angaben</b>", styles["Heading3"]))
-
-    elements.append(Table([
-        ["Fläche (ANE)", f"{ANE} m²"]
-    ], colWidths=[200, 300], style=table_style()))
-
-    elements.append(Spacer(1, 10))
-
-    # -----------------------------
-    # 2. Bewertung
+    # 1. Bewertung
     # -----------------------------
     notwendig = res["delta"] > 0
 
-    elements.append(Paragraph("<b>2. Bewertung</b>", styles["Heading3"]))
+    elements.append(Paragraph("<b>1. Bewertung</b>", styles["Heading3"]))
 
     elements.append(Table([
         ["Feuchteschutz erfüllt", cb(not notwendig)],
-        ["Maßnahmen erforderlich", cb(notwendig)]
-    ], colWidths=[350, 100], style=table_style()))
+        ["Lüftungstechnische Maßnahmen erforderlich", cb(notwendig)]
+    ], colWidths=[400, 100], style=table_style()))
 
     elements.append(Spacer(1, 10))
 
     # -----------------------------
-    # 3. Luftmengen
+    # 2. Luftmengen
     # -----------------------------
-    elements.append(Paragraph("<b>3. Luftmengen</b>", styles["Heading3"]))
+    elements.append(Paragraph("<b>2. Luftmengen</b>", styles["Heading3"]))
 
     elements.append(Table([
+        ["Fläche (ANE)", f"{ANE} m²"],
         ["Feuchteschutz", f"{round(res['q_required'],1)} m³/h"],
-        ["Abluft", f"{round(res['q_abluft'],1)} m³/h"],
-        ["Δ", f"{round(res['delta'],1)} m³/h"],
-    ], colWidths=[250, 200], style=table_style()))
+        ["Abluft gesamt", f"{round(res['q_abluft'],1)} m³/h"],
+        ["Differenz", f"{round(res['delta'],1)} m³/h"]
+    ], colWidths=[250, 250], style=table_style()))
 
     elements.append(Spacer(1, 10))
 
     # -----------------------------
-    # 4. Räume (MEHRSEITIG!)
+    # 3. Räume
     # -----------------------------
-    elements.append(Paragraph("<b>4. Räume</b>", styles["Heading3"]))
+    elements.append(Paragraph("<b>3. Räume</b>", styles["Heading3"]))
 
     data = [["Raum", "Typ", "Kategorie", "Abluft"]]
 
@@ -115,14 +117,14 @@ def create_pdf(filename, ANE, res):
 
     table = Table(data, repeatRows=1)
     table.setStyle(table_style())
-
     elements.append(table)
+
     elements.append(PageBreak())
 
     # -----------------------------
-    # 5. Luftführung (MEHRSEITIG)
+    # 4. Luftführung
     # -----------------------------
-    elements.append(Paragraph("<b>5. Luftführung</b>", styles["Heading3"]))
+    elements.append(Paragraph("<b>4. Luftführung</b>", styles["Heading3"]))
 
     flow_data = [["Von", "Nach", "Volumenstrom", "ÜLD"]]
 
@@ -136,26 +138,26 @@ def create_pdf(filename, ANE, res):
 
     table = Table(flow_data, repeatRows=1)
     table.setStyle(table_style())
-
     elements.append(table)
-    elements.append(PageBreak())
-
-    # -----------------------------
-    # 6. Komponenten
-    # -----------------------------
-    elements.append(Paragraph("<b>6. Komponenten</b>", styles["Heading3"]))
-
-    elements.append(Table([
-        ["ALD", f"{res['n_ald']}"],
-        ["ÜLD", f"{res['n_uld']}"]
-    ], colWidths=[250, 200], style=table_style()))
 
     elements.append(Spacer(1, 10))
 
     # -----------------------------
-    # 7. Prüfung
+    # 5. Komponenten
     # -----------------------------
-    elements.append(Paragraph("<b>7. Prüfung</b>", styles["Heading3"]))
+    elements.append(Paragraph("<b>5. Komponenten</b>", styles["Heading3"]))
+
+    elements.append(Table([
+        ["ALD", f"{res['n_ald']} Stück"],
+        ["ÜLD", f"{res['n_uld']} Stück"]
+    ], colWidths=[250, 250], style=table_style()))
+
+    elements.append(Spacer(1, 10))
+
+    # -----------------------------
+    # 6. Prüfung
+    # -----------------------------
+    elements.append(Paragraph("<b>6. Prüfung</b>", styles["Heading3"]))
 
     check_data = []
 
@@ -172,25 +174,29 @@ def create_pdf(filename, ANE, res):
 
     table = Table(check_data)
     table.setStyle(table_style())
-
     elements.append(table)
+
     elements.append(Spacer(1, 20))
 
     # -----------------------------
-    # 8. Unterschrift
+    # 7. UNTERSCHRIFT
     # -----------------------------
-    elements.append(Paragraph("<b>8. Bestätigung</b>", styles["Heading3"]))
+    elements.append(Paragraph("<b>7. Bestätigung</b>", styles["Heading3"]))
 
-    elements.append(Table([
+    unterschrift = Table([
         ["Ort, Datum", ""],
-        ["Unterschrift", ""]
-    ], colWidths=[200, 300], rowHeights=[25, 40], style=table_style()))
+        ["Planer (Name)", ""],
+        ["Unterschrift", ""],
+    ], colWidths=[200, 300], rowHeights=[25, 25, 40])
+
+    unterschrift.setStyle(table_style())
+    elements.append(unterschrift)
 
     # -----------------------------
-    # BUILD (mit Header/Footer!)
+    # BUILD
     # -----------------------------
     doc.build(
         elements,
-        onFirstPage=add_page_numbers,
-        onLaterPages=add_page_numbers
+        onFirstPage=header_footer,
+        onLaterPages=header_footer
     )
