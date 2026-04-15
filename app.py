@@ -56,7 +56,12 @@ df_rooms = st.data_editor(
         "Überströmt nach": st.column_config.TextColumn()
     }
 )
+st.subheader("Textausgabe")
 
+text_mode = st.selectbox(
+    "Textvariante wählen",
+    ["lang", "kurz", "behoerde"]
+)
 if st.button("Berechnen"):
 
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
@@ -69,7 +74,9 @@ if st.button("Berechnen"):
 
     errors, warnings = run_checks(df_res, G, delta)
 
-    text = generate_concept_text(ANE, {
+   text = generate_concept_text(
+    ANE,
+    {
         "q_required": q_req,
         "q_abluft": q_ab,
         "delta": delta,
@@ -77,7 +84,9 @@ if st.button("Berechnen"):
         "n_ald": n_ald,
         "n_uld": n_uld,
         "uld_edges": uld_edges
-    })
+    },
+    mode=text_mode
+)
 
     st.session_state["res"] = {
         "q_required": q_req,
