@@ -5,14 +5,12 @@ from logic.din18017 import get_abluft
 
 
 # -----------------------------
-# Hilfsfunktion für Kategorie
+# Hilfsfunktion Kategorie
 # -----------------------------
 def clean_category(cat):
-
     if not cat:
         return ""
-
-    return cat.split(" ")[0]  # "R-ZD (40 m³/h)" → "R-ZD"
+    return cat.split(" ")[0]
 
 
 # -----------------------------
@@ -43,29 +41,31 @@ def calculate_ventilation(df_rooms, ANE, fWS):
 # ALD
 # -----------------------------
 def calculate_ald(delta):
-
     if delta <= 0:
         return 0
-
     return math.ceil(delta / 30)
 
 
 # -----------------------------
-# Graph erstellen
+# Graph aus Raumtabelle
 # -----------------------------
-def build_graph(df_rooms, df_edges):
+def build_graph_from_rooms(df_rooms):
 
     G = nx.DiGraph()
 
-    # alle Räume hinzufügen
+    # Nodes
     for r in df_rooms["Raum"]:
         if r:
             G.add_node(r)
 
-    # Kanten hinzufügen
-    for _, row in df_edges.iterrows():
-        if row["Von"] and row["Nach"]:
-            G.add_edge(row["Von"], row["Nach"])
+    # Verbindungen
+    for _, row in df_rooms.iterrows():
+
+        src = row["Raum"]
+        dst = row.get("Überströmt nach", "")
+
+        if src and dst:
+            G.add_edge(src, dst)
 
     return G
 
@@ -83,7 +83,6 @@ def calculate_paths(G, df_rooms):
     for s in supply:
         for e in exhaust:
 
-            # Sicherheitscheck
             if s not in G.nodes or e not in G.nodes:
                 continue
 
@@ -97,27 +96,15 @@ def calculate_paths(G, df_rooms):
 
 
 # -----------------------------
-# ÜLD
+# ÜLD direkt aus Verbindungen
 # -----------------------------
-def calculate_uld(paths):
+def calculate_uld_from_graph(G):
 
-    edges = {}
-    total = 0
+    uld = {}
 
-    for p in paths:
-        for i in range(len(p) - 1):
+    for edge in G.edges():
+        uld[edge] = 1  # Basisannahme: 1 ÜLD je Verbindung
 
-            edge = (p[i], p[i + 1])
+    total = len(uld)
 
-            if edge not in edges:
-                edges[edge] = 0
-
-            edges[edge] += 1
-
-    # mindestens 1 je Verbindung
-    for k in edges:
-        edges[k] = max(1, edges[k])
-
-    total = sum(edges.values())
-
-    return total, edges
+    return total, uld
