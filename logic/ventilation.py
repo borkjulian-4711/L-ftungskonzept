@@ -88,3 +88,13 @@ def calculate_uld_from_paths(paths):
         total += n
 
     return total, result
+def build_graph_from_edges(edge_list):
+
+    import networkx as nx
+
+    G = nx.DiGraph()
+
+    for e in edge_list:
+        G.add_edge(e[0], e[1])
+
+    return G
