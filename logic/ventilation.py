@@ -23,36 +23,23 @@ def calculate_ventilation(df_rooms, ANE, fWS):
 def calculate_ald(delta, df_rooms):
 
     if delta <= 0:
-        return 0, {}
+        return 0
 
-    q_ald = 30
-    n_ald = math.ceil(delta / q_ald)
-
-    supply = df_rooms[df_rooms["Typ"] == "Zuluft"]
-
-    dist = {}
-    if len(supply) > 0:
-        per = math.ceil(n_ald / len(supply))
-        for r in supply["Raum"]:
-            dist[r] = per
-
-    return n_ald, dist
+    return math.ceil(delta / 30)
 
 
-def build_graph_from_edges(edge_list, df_rooms):
-
-    import networkx as nx
+def build_graph(df_rooms, df_edges):
 
     G = nx.DiGraph()
 
-    # 👉 ALLE Räume hinzufügen (Fix!)
+    # alle Räume
     for r in df_rooms["Raum"]:
         G.add_node(r)
 
-    # 👉 Kanten hinzufügen
-    for e in edge_list:
-        if e[0] and e[1]:
-            G.add_edge(e[0], e[1])
+    # Verbindungen
+    for _, row in df_edges.iterrows():
+        if row["Von"] and row["Nach"]:
+            G.add_edge(row["Von"], row["Nach"])
 
     return G
 
@@ -66,33 +53,36 @@ def calculate_paths(G, df_rooms):
 
     for s in supply:
         for e in exhaust:
-            if nx.has_path(G, s, e):
-                paths.append(nx.shortest_path(G, s, e))
+
+            if s not in G.nodes or e not in G.nodes:
+                continue
+
+            try:
+                if nx.has_path(G, s, e):
+                    paths.append(nx.shortest_path(G, s, e))
+            except:
+                pass
 
     return paths
 
 
-def calculate_uld_from_paths(paths):
+def calculate_uld(paths):
 
-    q_uld = 30
-    edge_load = {}
-
-    for path in paths:
-        for i in range(len(path)-1):
-
-            edge = (path[i], path[i+1])
-
-            if edge not in edge_load:
-                edge_load[edge] = 0
-
-            edge_load[edge] += 30
-
-    result = {}
+    edges = {}
     total = 0
 
-    for edge, q in edge_load.items():
-        n = max(1, math.ceil(q / q_uld))
-        result[edge] = n
-        total += n
+    for p in paths:
+        for i in range(len(p)-1):
+            edge = (p[i], p[i+1])
 
-    return total, result
+            if edge not in edges:
+                edges[edge] = 0
+
+            edges[edge] += 1
+
+    for k in edges:
+        edges[k] = max(1, edges[k])
+
+    total = sum(edges.values())
+
+    return total, edges
