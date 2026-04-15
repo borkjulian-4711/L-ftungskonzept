@@ -11,6 +11,7 @@ from logic.ventilation import (
 )
 
 from logic.text_generator import generate_concept_text
+from logic.validation import validate_inputs
 from export.pdf_generator import create_multi_pdf
 
 
@@ -139,7 +140,7 @@ df_rooms = st.data_editor(
 
         "Überströmt nach": st.column_config.SelectboxColumn(
             "Überströmt nach",
-            options=[""] + ["Wohnzimmer", "Flur", "Bad"]
+            options=["", "Wohnzimmer", "Flur", "Bad"]
         )
     }
 )
@@ -159,10 +160,26 @@ text_mode = st.selectbox(
 )
 
 # -----------------------------
-# BERECHNUNG
+# BERECHNUNG + VALIDIERUNG
 # -----------------------------
 if st.button("🔄 Berechnen"):
 
+    errors, warnings = validate_inputs(df_rooms)
+
+    # Fehler stoppen Berechnung
+    if errors:
+        st.error("❌ Fehler in den Eingaben:")
+        for e in errors:
+            st.write("- " + e)
+        st.stop()
+
+    # Warnungen anzeigen
+    if warnings:
+        st.warning("⚠️ Hinweise:")
+        for w in warnings:
+            st.write("- " + w)
+
+    # Berechnung
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald = calculate_ald(delta)
 
@@ -194,7 +211,8 @@ if st.button("🔄 Berechnen"):
             "n_ald": n_ald,
             "n_uld": n_uld,
             "uld_edges": uld_edges,
-            "text": text
+            "text": text,
+            "warnings": warnings
         }
     }
 
@@ -218,8 +236,12 @@ if flat in st.session_state["project"]:
         st.write(f"{a} → {b}: {d['Anzahl']} ÜLD ({d['Volumenstrom']} m³/h)")
 
     st.subheader("Konzeptbeschreibung")
-
     st.text_area("Text", data["text"], height=300)
+
+    if "warnings" in data and data["warnings"]:
+        st.subheader("Hinweise")
+        for w in data["warnings"]:
+            st.warning(w)
 
 # -----------------------------
 # PDF EXPORT
