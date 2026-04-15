@@ -2,7 +2,6 @@ def auto_connect_rooms(df):
 
     df = df.copy()
 
-    # Räume filtern
     supply = df[df["Typ"] == "Zuluft"]["Raum"].tolist()
     overflow = df[df["Typ"] == "Überström"]["Raum"].tolist()
     exhaust = df[df["Typ"] == "Abluft"]["Raum"].tolist()
@@ -14,8 +13,10 @@ def auto_connect_rooms(df):
             flur = row["Raum"]
 
     # -----------------------------
-    # ZULUFT → FLUR / ABLUFT
+    # ZULUFT → FLUR oder VERTEILT
     # -----------------------------
+    ex_index = 0
+
     for i, row in df.iterrows():
 
         if row["Typ"] == "Zuluft":
@@ -23,23 +24,28 @@ def auto_connect_rooms(df):
             if flur:
                 df.at[i, "Überströmt nach"] = flur
             elif exhaust:
-                df.at[i, "Überströmt nach"] = exhaust[0]
+                target = exhaust[ex_index % len(exhaust)]
+                df.at[i, "Überströmt nach"] = target
+                ex_index += 1
 
     # -----------------------------
-    # ÜBERSTRÖM → ABLUFT
+    # ÜBERSTRÖM → VERTEILT AUF ABLUFT
     # -----------------------------
+    ex_index = 0
+
     for i, row in df.iterrows():
 
         if row["Typ"] == "Überström":
 
             if exhaust:
-                df.at[i, "Überströmt nach"] = exhaust[0]
+                target = exhaust[ex_index % len(exhaust)]
+                df.at[i, "Überströmt nach"] = target
+                ex_index += 1
 
     # -----------------------------
     # ABLUFT → kein Ziel
     # -----------------------------
     for i, row in df.iterrows():
-
         if row["Typ"] == "Abluft":
             df.at[i, "Überströmt nach"] = ""
 
