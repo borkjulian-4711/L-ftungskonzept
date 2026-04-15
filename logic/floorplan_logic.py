@@ -3,7 +3,6 @@ import math
 def distance(a, b):
     return math.sqrt((a["x"]-b["x"])**2 + (a["y"]-b["y"])**2)
 
-
 def auto_connect_rooms(rooms, max_dist=300):
 
     edges = []
