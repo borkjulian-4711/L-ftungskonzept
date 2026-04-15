@@ -46,7 +46,7 @@ if st.button("Berechnen"):
     q_required, q_abluft, delta, df_result = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald, _ = calculate_ald(delta, df_result)
 
-    G = build_graph_from_edges(edges_auto)
+    G = build_graph_from_edges(edges_auto, df_result)
     paths = calculate_paths(G, df_result)
     n_uld, _ = calculate_uld_from_paths(paths)
 
