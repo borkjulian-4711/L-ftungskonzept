@@ -1,74 +1,122 @@
+
 import streamlit as st
 import pandas as pd
 import tempfile
+import matplotlib.pyplot as plt
+import networkx as nx
 
-from logic.ventilation import (
-    calculate_ventilation,
-    calculate_ald,
-    build_airflow_graph,
-    check_airflow,
-    calculate_uld_from_graph
-)
-
+from logic.ventilation import *
+from logic.checks import run_checks
 from export.pdf_generator import create_din_pdf
 
 st.title("🌀 Lüftungskonzept Tool")
 
+# Sidebar
 ANE = st.sidebar.number_input("Fläche", 30, 300, 80)
 fWS = st.sidebar.selectbox("fWS", [0.2, 0.3, 0.4])
 
-df_rooms = st.data_editor(pd.DataFrame({
-    "Raum": ["Wohnzimmer", "Flur", "Bad"],
-    "Typ": ["Zuluft", "Überström", "Abluft"],
-    "Innenliegend": [False, False, True],
-    "Kategorie": ["", "", "Bad"],
-    "DIN 18017 Kategorie": ["", "", "R-ZD"]
+# Räume
+st.subheader("Räume")
+
+df_rooms = st.data_editor(
+    pd.DataFrame({
+        "Raum": ["Wohnzimmer", "Flur", "Bad"],
+        "Typ": ["Zuluft", "Überström", "Abluft"],
+        "Innenliegend": [False, False, True],
+        "Kategorie": ["Wohnraum", "Flur", "Bad"],
+        "DIN 18017 Kategorie": ["", "", "R-ZD"]
+    }),
+    num_rows="dynamic",
+    column_config={
+        "Typ": st.column_config.SelectboxColumn(
+            options=["Zuluft", "Überström", "Abluft"]
+        ),
+        "Kategorie": st.column_config.SelectboxColumn(
+            options=["Wohnraum","Schlafzimmer","Flur","Küche","Bad","WC"]
+        ),
+        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(
+            options=["","R-ZD","R-BD","R-PN","R-PD"]
+        ),
+    }
+)
+
+# Verbindungen
+st.subheader("Verbindungen")
+
+df_edges = st.data_editor(pd.DataFrame({
+    "Von": ["Wohnzimmer","Flur"],
+    "Nach": ["Flur","Bad"]
 }), num_rows="dynamic")
 
+# Berechnung
 if st.button("Berechnen"):
 
     q_required, q_abluft, delta, df_result = calculate_ventilation(df_rooms, ANE, fWS)
+    n_ald, _ = calculate_ald(delta, df_result)
 
-    n_ald, ald_dist = calculate_ald(delta, df_result)
+    G = build_real_graph(df_edges)
+    paths = calculate_paths(G, df_result)
+    n_uld, uld_edges = calculate_uld_from_paths(paths)
 
-    G = build_airflow_graph(df_result)
+    errors, warnings = run_checks(df_result, G, {"delta": delta})
 
-    paths, missing = check_airflow(G, df_result)
+    st.session_state["res"] = {
+        "q_required": q_required,
+        "q_abluft": q_abluft,
+        "delta": delta,
+        "df": df_result,
+        "n_ald": n_ald,
+        "n_uld": n_uld,
+        "paths": paths,
+        "errors": errors,
+        "warnings": warnings
+    }
 
-    n_uld, uld_edges = calculate_uld_from_graph(G, paths, df_result)
+# Anzeige
+if "res" in st.session_state:
+
+    r = st.session_state["res"]
 
     st.subheader("Ergebnisse")
-    st.write("Feuchteschutz:", q_required)
-    st.write("Abluft:", q_abluft)
+    st.write("Feuchteschutz:", r["q_required"])
+    st.write("Abluft:", r["q_abluft"])
 
-    st.subheader("ALD")
-    st.write(n_ald, "Stück")
+    st.write("ALD:", r["n_ald"])
+    st.write("ÜLD:", r["n_uld"])
 
-    st.subheader("Luftpfade")
-    for p in paths:
-        st.write(" → ".join(p))
+    st.subheader("Prüfung")
 
-    if missing:
-        st.error(f"Keine Verbindung für: {missing}")
+    for e in r["errors"]:
+        st.error(e)
 
-    st.subheader("ÜLD (Kanten)")
-    for edge, n in uld_edges.items():
-        st.write(f"{edge[0]} → {edge[1]}: {n} ÜLD")
+    for w in r["warnings"]:
+        st.warning(w)
 
-    if st.button("PDF"):
+    if not r["errors"] and not r["warnings"]:
+        st.success("OK")
+
+    st.subheader("Luftgraph")
+
+    fig, ax = plt.subplots()
+    pos = nx.spring_layout(build_real_graph(df_edges))
+    nx.draw(build_real_graph(df_edges), pos, with_labels=True, ax=ax)
+    st.pyplot(fig)
+
+    if st.button("📄 PDF"):
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
         create_din_pdf(
             tmp.name,
             {"ANE": ANE},
-            {"q_required": q_required, "q_abluft": q_abluft},
-            df_result,
-            "",
-            n_ald,
-            n_uld,
-            paths
+            r,
+            r["df"],
+            r["errors"],
+            r["warnings"],
+            r["n_ald"],
+            r["n_uld"],
+            r["paths"]
         )
 
         with open(tmp.name, "rb") as f:
-            st.download_button("Download", f)
+            st.download_button("Download PDF", f)
