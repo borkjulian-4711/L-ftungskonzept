@@ -7,8 +7,17 @@ def generate_concept_text(ANE, res, mode="lang", meta=None):
     n_ald = res["n_ald"]
     n_uld = res["n_uld"]
 
-    supply = res["df"][res["df"]["Typ"] == "Zuluft"]["Raum"].tolist()
-    exhaust = res["df"][res["df"]["Typ"] == "Abluft"]["Raum"].tolist()
+def clean_list(values):
+    return [str(v) for v in values if v and str(v) != "nan"]
+
+
+supply = clean_list(
+    res["df"][res["df"]["Typ"] == "Zuluft"]["Raum"].tolist()
+)
+
+exhaust = clean_list(
+    res["df"][res["df"]["Typ"] == "Abluft"]["Raum"].tolist()
+)
 
     flow_text = ""
     for (a, b), d in res["uld_edges"].items():
