@@ -18,7 +18,12 @@ def calculate_ventilation(df_rooms, ANE, fWS):
     delta = q_required - q_abluft
 
     return q_required, q_abluft, delta, df_rooms
+def clean_category(cat):
 
+    if not cat:
+        return ""
+
+    return cat.split(" ")[0]  # nimmt nur "R-ZD"
 
 def calculate_ald(delta, df_rooms):
 
