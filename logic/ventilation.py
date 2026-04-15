@@ -39,10 +39,17 @@ def calculate_ald(delta, df_rooms):
     return n_ald, dist
 
 
-def build_graph_from_edges(edge_list):
+def build_graph_from_edges(edge_list, df_rooms):
+
+    import networkx as nx
 
     G = nx.DiGraph()
 
+    # 👉 ALLE Räume hinzufügen (Fix!)
+    for r in df_rooms["Raum"]:
+        G.add_node(r)
+
+    # 👉 Kanten hinzufügen
     for e in edge_list:
         if e[0] and e[1]:
             G.add_edge(e[0], e[1])
