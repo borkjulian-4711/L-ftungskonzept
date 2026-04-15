@@ -7,35 +7,67 @@ import networkx as nx
 from logic.ventilation import (
     calculate_ventilation,
     calculate_ald,
-    build_graph_from_edges,
+    build_graph,
     calculate_paths,
-    calculate_uld_from_paths
+    calculate_uld
 )
 
 from logic.checks import run_checks
-from export.pdf_generator import create_din_pdf
-from ui.floorplan import upload_floorplan, define_rooms
-from logic.floorplan_logic import auto_connect_rooms
+from export.pdf_generator import create_pdf
 
-st.title("🌀 Lüftungskonzept Tool")
+st.title("🌀 Lüftungskonzept nach DIN 1946-6")
 
-ANE = st.sidebar.number_input("Fläche", 30, 300, 80)
+# Sidebar
+ANE = st.sidebar.number_input("Fläche Nutzungseinheit (m²)", 30, 300, 80)
 fWS = st.sidebar.selectbox("fWS", [0.2, 0.3, 0.4])
 
-# Grundriss
-upload_floorplan()
-rooms_pos = define_rooms()
-
-edges_auto = auto_connect_rooms(rooms_pos)
+# DIN 1946 Räume
+raum_kategorien = [
+    "Wohnzimmer",
+    "Schlafzimmer",
+    "Kinderzimmer",
+    "Arbeitszimmer",
+    "Küche",
+    "Bad",
+    "Duschraum",
+    "WC",
+    "Flur",
+    "Abstellraum",
+    "Hauswirtschaftsraum"
+]
 
 # Räume
+st.subheader("Räume")
+
 df_rooms = st.data_editor(
     pd.DataFrame({
-        "Raum": [r["name"] for r in rooms_pos] if rooms_pos else ["Wohnzimmer"],
-        "Typ": ["Zuluft"],
-        "Innenliegend": [False],
-        "Kategorie": ["Wohnraum"],
-        "DIN 18017 Kategorie": [""]
+        "Raum": ["Wohnzimmer", "Bad"],
+        "Typ": ["Zuluft", "Abluft"],
+        "Innenliegend": [False, True],
+        "Kategorie": ["Wohnzimmer", "Bad"],
+        "DIN 18017 Kategorie": ["", "R-ZD"]
+    }),
+    num_rows="dynamic",
+    column_config={
+        "Typ": st.column_config.SelectboxColumn(
+            options=["Zuluft", "Überström", "Abluft"]
+        ),
+        "Kategorie": st.column_config.SelectboxColumn(
+            options=raum_kategorien
+        ),
+        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(
+            options=["", "R-ZD", "R-BD", "R-PN", "R-PD"]
+        )
+    }
+)
+
+# Verbindungen
+st.subheader("Raumverbindungen")
+
+df_edges = st.data_editor(
+    pd.DataFrame({
+        "Von": ["Wohnzimmer"],
+        "Nach": ["Bad"]
     }),
     num_rows="dynamic"
 )
@@ -43,20 +75,20 @@ df_rooms = st.data_editor(
 # Berechnung
 if st.button("Berechnen"):
 
-    q_required, q_abluft, delta, df_result = calculate_ventilation(df_rooms, ANE, fWS)
-    n_ald, _ = calculate_ald(delta, df_result)
+    q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
+    n_ald = calculate_ald(delta, df_res)
 
-    G = build_graph_from_edges(edges_auto, df_result)
-    paths = calculate_paths(G, df_result)
-    n_uld, _ = calculate_uld_from_paths(paths)
+    G = build_graph(df_res, df_edges)
+    paths = calculate_paths(G, df_res)
+    n_uld, _ = calculate_uld(paths)
 
-    errors, warnings = run_checks(df_result, G, {"delta": delta})
+    errors, warnings = run_checks(df_res, G, delta)
 
     st.session_state["res"] = {
-        "q_required": q_required,
-        "q_abluft": q_abluft,
+        "q_required": q_req,
+        "q_abluft": q_ab,
         "delta": delta,
-        "df": df_result,
+        "df": df_res,
         "n_ald": n_ald,
         "n_uld": n_uld,
         "paths": paths,
@@ -81,26 +113,19 @@ if "res" in st.session_state:
     for w in r["warnings"]:
         st.warning(w)
 
+    if not r["errors"] and not r["warnings"]:
+        st.success("System OK")
+
     fig, ax = plt.subplots()
     pos = nx.spring_layout(r["graph"])
     nx.draw(r["graph"], pos, with_labels=True, ax=ax)
     st.pyplot(fig)
 
-    if st.button("PDF"):
+    if st.button("PDF erzeugen"):
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
-        create_din_pdf(
-            tmp.name,
-            {"ANE": ANE},
-            r,
-            r["df"],
-            r["errors"],
-            r["warnings"],
-            r["n_ald"],
-            r["n_uld"],
-            r["paths"]
-        )
+        create_pdf(tmp.name, ANE, r)
 
         with open(tmp.name, "rb") as f:
-            st.download_button("Download", f)
+            st.download_button("Download PDF", f)
