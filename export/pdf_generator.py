@@ -9,165 +9,191 @@ styles = getSampleStyleSheet()
 # -----------------------------
 # Checkbox
 # -----------------------------
-def checkbox(val):
+def cb(val):
     return "☑" if val else "☐"
 
 
 # -----------------------------
-# PDF erstellen
+# Standard Tabellenstil
+# -----------------------------
+def table_style():
+    return [
+        ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]
+
+
+# -----------------------------
+# PDF
 # -----------------------------
 def create_pdf(filename, ANE, res):
 
-    doc = SimpleDocTemplate(filename, pagesize=A4)
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=A4,
+        leftMargin=30,
+        rightMargin=30,
+        topMargin=20,
+        bottomMargin=20
+    )
+
     elements = []
 
     # -----------------------------
-    # Titel
+    # HEADER
     # -----------------------------
-    elements.append(Paragraph("LÜFTUNGSKONZEPT NACH DIN 1946-6", styles["Title"]))
-    elements.append(Spacer(1, 12))
-
-    # -----------------------------
-    # 1. Projekt
-    # -----------------------------
-    elements.append(Paragraph("1. Allgemeine Angaben", styles["Heading2"]))
-
-    table = Table([
-        ["Nutzungseinheit", "Wohnung"],
-        ["Fläche (ANE)", f"{ANE} m²"],
-    ], colWidths=[200, 250])
-
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
+    elements.append(
+        Paragraph("<b>LÜFTUNGSKONZEPT NACH DIN 1946-6</b>", styles["Title"])
+    )
     elements.append(Spacer(1, 10))
 
     # -----------------------------
-    # 2. Lüftungskonzept notwendig?
+    # 1. ALLGEMEIN
+    # -----------------------------
+    elements.append(Paragraph("<b>1. Allgemeine Angaben</b>", styles["Heading3"]))
+
+    t = Table([
+        ["Nutzungseinheit", "Wohnung"],
+        ["Fläche (ANE)", f"{ANE} m²"],
+    ], colWidths=[200, 300])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
+
+    # -----------------------------
+    # 2. ERFORDERNIS
     # -----------------------------
     notwendig = res["delta"] > 0
 
-    elements.append(Paragraph("2. Erfordernis lüftungstechnischer Maßnahmen", styles["Heading2"]))
+    elements.append(Paragraph("<b>2. Erfordernis von Maßnahmen</b>", styles["Heading3"]))
 
-    table = Table([
-        ["Lüftungskonzept erforderlich", checkbox(True)],
-        ["Feuchteschutz erfüllt ohne Maßnahmen", checkbox(not notwendig)],
-        ["Zusätzliche Maßnahmen erforderlich", checkbox(notwendig)],
-    ], colWidths=[350, 100])
-
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
-    elements.append(Spacer(1, 10))
-
-    # -----------------------------
-    # 3. Lüftungssystem
-    # -----------------------------
-    elements.append(Paragraph("3. Gewähltes Lüftungssystem", styles["Heading2"]))
-
-    table = Table([
-        ["Freie Lüftung", checkbox(True)],
-        ["Abluftsystem nach DIN 18017-3", checkbox(True)],
-        ["Kombiniertes System", checkbox(True)],
-    ], colWidths=[350, 100])
-
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
-    elements.append(Spacer(1, 10))
+    t = Table([
+        ["Lüftungskonzept erforderlich", cb(True)],
+        ["Feuchteschutz ausreichend", cb(not notwendig)],
+        ["Zusätzliche Maßnahmen erforderlich", cb(notwendig)],
+    ], colWidths=[400, 100])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
 
     # -----------------------------
-    # 4. Luftmengen
+    # 3. SYSTEM
     # -----------------------------
-    elements.append(Paragraph("4. Luftvolumenströme", styles["Heading2"]))
+    elements.append(Paragraph("<b>3. Lüftungssystem</b>", styles["Heading3"]))
 
-    table = Table([
-        ["Feuchteschutz (erforderlich)", f"{round(res['q_required'],1)} m³/h"],
+    t = Table([
+        ["Freie Lüftung", cb(True)],
+        ["Abluftsystem (DIN 18017-3)", cb(True)],
+        ["Kombiniertes System", cb(True)],
+    ], colWidths=[400, 100])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
+
+    # -----------------------------
+    # 4. LUFTMENGEN
+    # -----------------------------
+    elements.append(Paragraph("<b>4. Luftvolumenströme</b>", styles["Heading3"]))
+
+    t = Table([
+        ["Feuchteschutz", f"{round(res['q_required'],1)} m³/h"],
         ["Abluft gesamt", f"{round(res['q_abluft'],1)} m³/h"],
         ["Differenz", f"{round(res['delta'],1)} m³/h"],
-    ], colWidths=[300, 150])
-
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
-    elements.append(Spacer(1, 10))
+    ], colWidths=[300, 200])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
 
     # -----------------------------
-    # 5. Räume
+    # 5. RÄUME
     # -----------------------------
-    elements.append(Paragraph("5. Raumliste", styles["Heading2"]))
+    elements.append(Paragraph("<b>5. Räume</b>", styles["Heading3"]))
 
-    data = [["Raum", "Typ", "Kategorie", "Abluft (m³/h)"]]
+    data = [["Raum", "Typ", "Kategorie", "Abluft"]]
 
     for _, r in res["df"].iterrows():
         data.append([
             r["Raum"],
             r["Typ"],
             r["Kategorie"],
-            round(r["Abluft (m³/h)"], 1)
+            f"{round(r['Abluft (m³/h)'],1)}"
         ])
 
-    table = Table(data)
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
-    elements.append(Spacer(1, 10))
+    t = Table(data, colWidths=[120, 80, 180, 80])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
 
     # -----------------------------
-    # 6. Lüftungselemente
+    # 6. BAUTEILE
     # -----------------------------
-    elements.append(Paragraph("6. Lüftungselemente", styles["Heading2"]))
+    elements.append(Paragraph("<b>6. Lüftungselemente</b>", styles["Heading3"]))
 
-    table = Table([
-        ["Außenluftdurchlässe (ALD)", f"{res['n_ald']} Stück"],
-        ["Überströmöffnungen (ÜLD)", f"{res['n_uld']} Stück"],
-    ], colWidths=[300, 150])
-
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
-    elements.append(Spacer(1, 10))
-
-    # -----------------------------
-    # 7. Luftführung
-    # -----------------------------
-    elements.append(Paragraph("7. Luftführung", styles["Heading2"]))
-
-    for (a, b), data in res["uld_edges"].items():
-        elements.append(
-            Paragraph(
-                f"{a} → {b}: {data['Anzahl']} ÜLD "
-                f"({data['Volumenstrom']} m³/h)",
-                styles["Normal"]
-            )
-        )
-
-    elements.append(Spacer(1, 10))
+    t = Table([
+        ["ALD", f"{res['n_ald']} Stück"],
+        ["ÜLD", f"{res['n_uld']} Stück"],
+    ], colWidths=[300, 200])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
 
     # -----------------------------
-    # 8. Prüfung
+    # 7. LUFTFÜHRUNG
     # -----------------------------
-    elements.append(Paragraph("8. Prüfung / Bewertung", styles["Heading2"]))
+    elements.append(Paragraph("<b>7. Luftführung</b>", styles["Heading3"]))
 
-    for e in res["errors"]:
-        elements.append(Paragraph(f"FEHLER: {e}", styles["Normal"]))
+    flow_data = [["Von", "Nach", "Volumenstrom", "ÜLD"]]
 
-    for w in res["warnings"]:
-        elements.append(Paragraph(f"HINWEIS: {w}", styles["Normal"]))
+    for (a, b), d in res["uld_edges"].items():
+        flow_data.append([
+            a,
+            b,
+            f"{d['Volumenstrom']} m³/h",
+            f"{d['Anzahl']}"
+        ])
 
-    if not res["errors"] and not res["warnings"]:
-        elements.append(Paragraph("Keine Auffälligkeiten", styles["Normal"]))
-
-    elements.append(Spacer(1, 20))
+    t = Table(flow_data, colWidths=[120, 120, 120, 80])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 8))
 
     # -----------------------------
-    # 9. Unterschrift
+    # 8. PRÜFUNG
     # -----------------------------
-    elements.append(Paragraph("9. Bestätigung", styles["Heading2"]))
+    elements.append(Paragraph("<b>8. Prüfung</b>", styles["Heading3"]))
 
-    table = Table([
+    check_data = []
+
+    if res["errors"]:
+        for e in res["errors"]:
+            check_data.append([f"FEHLER: {e}"])
+    if res["warnings"]:
+        for w in res["warnings"]:
+            check_data.append([f"HINWEIS: {w}"])
+
+    if not check_data:
+        check_data = [["Keine Auffälligkeiten"]]
+
+    t = Table(check_data, colWidths=[500])
+    t.setStyle(table_style())
+    elements.append(t)
+    elements.append(Spacer(1, 12))
+
+    # -----------------------------
+    # 9. UNTERSCHRIFT
+    # -----------------------------
+    elements.append(Paragraph("<b>9. Bestätigung</b>", styles["Heading3"]))
+
+    t = Table([
         ["Ort, Datum", ""],
         ["Unterschrift Planer", ""],
-    ], colWidths=[200, 250], rowHeights=[30, 40])
+    ], colWidths=[200, 300], rowHeights=[25, 40])
 
-    table.setStyle([("GRID", (0,0), (-1,-1), 1, colors.black)])
-    elements.append(table)
+    t.setStyle(table_style())
+    elements.append(t)
 
     # -----------------------------
-    # PDF bauen
+    # BUILD
     # -----------------------------
     doc.build(elements)
