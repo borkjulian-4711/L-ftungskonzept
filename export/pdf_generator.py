@@ -177,7 +177,9 @@ def create_pdf(filename, ANE, res):
     elements.append(table)
 
     elements.append(Spacer(1, 20))
-
+elements.append(Paragraph("<b>Textliche Beschreibung</b>", styles["Heading3"]))
+elements.append(Paragraph(res["text"], styles["Normal"]))
+elements.append(Spacer(1, 10))
     # -----------------------------
     # 7. UNTERSCHRIFT
     # -----------------------------
