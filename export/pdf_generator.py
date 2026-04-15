@@ -1,40 +1,27 @@
 from reportlab.platypus import *
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import styles
 from reportlab.lib.pagesizes import A4
 
-styles = getSampleStyleSheet()
-
-def checkbox(val):
-    return "☑" if val else "☐"
+def checkbox(v):
+    return "☑" if v else "☐"
 
 
-def create_din_pdf(filename, project, results, df_rooms, errors, warnings, n_ald, n_uld, paths):
+def create_pdf(file, ANE, res):
 
-    doc = SimpleDocTemplate(filename, pagesize=A4)
+    doc = SimpleDocTemplate(file, pagesize=A4)
+    s = styles.getSampleStyleSheet()
+
     elements = []
 
-    elements.append(Paragraph("LÜFTUNGSKONZEPT NACH DIN 1946-6", styles["Title"]))
-    elements.append(Spacer(1, 12))
+    elements.append(Paragraph("Lüftungskonzept DIN 1946-6", s["Title"]))
 
-    elements.append(Paragraph("Projekt", styles["Heading2"]))
-    elements.append(Paragraph(f"Fläche: {project['ANE']} m²", styles["Normal"]))
+    elements.append(Paragraph(f"Fläche: {ANE}", s["Normal"]))
 
-    notwendig = results["delta"] > 0
+    notwendig = res["delta"] > 0
 
-    elements.append(Paragraph("Bewertung", styles["Heading2"]))
-    elements.append(Paragraph(f"Maßnahmen erforderlich: {checkbox(notwendig)}", styles["Normal"]))
+    elements.append(Paragraph(f"Maßnahmen: {checkbox(notwendig)}", s["Normal"]))
 
-    elements.append(Spacer(1, 10))
-
-    elements.append(Paragraph("ALD / ÜLD", styles["Heading2"]))
-    elements.append(Paragraph(f"ALD: {n_ald}", styles["Normal"]))
-    elements.append(Paragraph(f"ÜLD: {n_uld}", styles["Normal"]))
-
-    elements.append(Spacer(1, 10))
-
-    elements.append(Paragraph("Luftpfade", styles["Heading2"]))
-    for p in paths:
-        elements.append(Paragraph(" → ".join(p), styles["Normal"]))
+    elements.append(Paragraph(f"ALD: {res['n_ald']}", s["Normal"]))
+    elements.append(Paragraph(f"ÜLD: {res['n_uld']}", s["Normal"]))
 
     doc.build(elements)
