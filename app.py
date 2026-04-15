@@ -15,16 +15,17 @@ from logic.ventilation import (
 from logic.checks import run_checks
 from export.pdf_generator import create_pdf
 
+
 st.title("🌀 Lüftungskonzept nach DIN 1946-6")
 
 # -----------------------------
 # Sidebar
 # -----------------------------
 ANE = st.sidebar.number_input("Fläche Nutzungseinheit (m²)", 30, 300, 80)
-fWS = st.sidebar.selectbox("fWS", [0.2, 0.3, 0.4])
+fWS = st.sidebar.selectbox("Faktor fWS", [0.2, 0.3, 0.4])
 
 # -----------------------------
-# DIN Raumkategorien
+# Raumkategorien DIN 1946-6
 # -----------------------------
 raum_kategorien = [
     "Wohnzimmer",
@@ -40,6 +41,9 @@ raum_kategorien = [
     "Hauswirtschaftsraum"
 ]
 
+# -----------------------------
+# DIN 18017 Kategorien mit Anzeige
+# -----------------------------
 din18017_kategorien = [
     "",
     "R-ZD (ca. 40 m³/h)",
@@ -51,7 +55,7 @@ din18017_kategorien = [
 # -----------------------------
 # Raumtabelle
 # -----------------------------
-st.subheader("Räume und Luftführung")
+st.subheader("Räume & Luftführung")
 
 df_rooms = st.data_editor(
     pd.DataFrame({
@@ -81,6 +85,8 @@ df_rooms = st.data_editor(
             options=din18017_kategorien
         ),
 
+        "Innenliegend": st.column_config.CheckboxColumn("Innenliegend"),
+
         "Überströmt nach": st.column_config.TextColumn(
             "Überströmt nach (Raumname)"
         )
@@ -90,14 +96,15 @@ df_rooms = st.data_editor(
 # -----------------------------
 # Berechnung
 # -----------------------------
-if st.button("Berechnen"):
+if st.button("🔄 Berechnen"):
 
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald = calculate_ald(delta)
 
     G = build_graph_from_rooms(df_res)
     paths = calculate_paths(G, df_res)
-    n_uld, uld_edges = calculate_uld_from_graph(G)
+
+    n_uld, uld_edges = calculate_uld_from_graph(G, df_res, paths)
 
     errors, warnings = run_checks(df_res, G, delta)
 
@@ -116,7 +123,7 @@ if st.button("Berechnen"):
     }
 
 # -----------------------------
-# Anzeige
+# Ergebnisse anzeigen
 # -----------------------------
 if "res" in st.session_state:
 
@@ -127,27 +134,42 @@ if "res" in st.session_state:
     col1, col2, col3 = st.columns(3)
 
     col1.metric("Feuchteschutz", round(r["q_required"], 1))
-    col2.metric("Abluft", round(r["q_abluft"], 1))
-    col3.metric("Δ", round(r["delta"], 1))
+    col2.metric("Abluft gesamt", round(r["q_abluft"], 1))
+    col3.metric("Δ Volumenstrom", round(r["delta"], 1))
 
-    st.write("ALD:", r["n_ald"])
-    st.write("ÜLD:", r["n_uld"])
+    st.write(f"**ALD erforderlich:** {r['n_ald']} Stück")
+    st.write(f"**ÜLD gesamt:** {r['n_uld']} Stück")
 
+    # -----------------------------
     # Raumwerte
+    # -----------------------------
     st.subheader("Raumwerte")
 
     st.dataframe(
-        r["df"][["Raum", "Kategorie", "DIN 18017 Kategorie", "Abluft (m³/h)"]],
+        r["df"][[
+            "Raum",
+            "Kategorie",
+            "DIN 18017 Kategorie",
+            "Abluft (m³/h)"
+        ]],
         use_container_width=True
     )
 
+    # -----------------------------
     # ÜLD je Verbindung
+    # -----------------------------
     st.subheader("Überströmöffnungen (ÜLD)")
 
-    for (a, b), n in r["uld_edges"].items():
-        st.write(f"{a} → {b}: {n} ÜLD")
+    for (a, b), data in r["uld_edges"].items():
+        st.write(
+            f"{a} → {b}: "
+            f"{data['Anzahl']} ÜLD "
+            f"(Volumenstrom: {data['Volumenstrom']} m³/h)"
+        )
 
+    # -----------------------------
     # Prüfung
+    # -----------------------------
     st.subheader("Prüfung")
 
     for e in r["errors"]:
@@ -159,16 +181,22 @@ if "res" in st.session_state:
     if not r["errors"] and not r["warnings"]:
         st.success("System OK")
 
+    # -----------------------------
     # Graph
+    # -----------------------------
     st.subheader("Luftströmung")
 
     fig, ax = plt.subplots()
     pos = nx.spring_layout(r["graph"])
-    nx.draw(r["graph"], pos, with_labels=True, ax=ax)
+    nx.draw(r["graph"], pos, with_labels=True, node_color="lightblue", ax=ax)
 
     st.pyplot(fig)
 
-    # PDF
+    # -----------------------------
+    # PDF Export
+    # -----------------------------
+    st.subheader("Export")
+
     if st.button("📄 PDF erzeugen"):
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
@@ -176,4 +204,8 @@ if "res" in st.session_state:
         create_pdf(tmp.name, ANE, r)
 
         with open(tmp.name, "rb") as f:
-            st.download_button("Download PDF", f)
+            st.download_button(
+                "📥 PDF herunterladen",
+                f,
+                file_name="lueftungskonzept.pdf"
+            )
