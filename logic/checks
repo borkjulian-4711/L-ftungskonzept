@@ -5,9 +5,7 @@ def run_checks(df_rooms, G, results):
     errors = []
     warnings = []
 
-    # -----------------------------
-    # 1. Ablufträume prüfen
-    # -----------------------------
+    # Abluft prüfen
     for _, r in df_rooms.iterrows():
 
         if r["Typ"] == "Abluft":
@@ -15,28 +13,15 @@ def run_checks(df_rooms, G, results):
             if r["Innenliegend"] and not r["DIN 18017 Kategorie"]:
                 errors.append(f"{r['Raum']}: keine DIN 18017 Kategorie")
 
-            if not r["Innenliegend"]:
-                warnings.append(f"{r['Raum']}: Abluftraum mit Fenster – prüfen")
-
-    # -----------------------------
-    # 2. Luftverbindung prüfen
-    # -----------------------------
+    # Verbindung prüfen
     supply = df_rooms[df_rooms["Typ"] == "Zuluft"]["Raum"]
     exhaust = df_rooms[df_rooms["Typ"] == "Abluft"]["Raum"]
 
     for s in supply:
-        connected = False
-
-        for e in exhaust:
-            if nx.has_path(G, s, e):
-                connected = True
-
-        if not connected:
+        if not any(nx.has_path(G, s, e) for e in exhaust):
             errors.append(f"{s}: keine Verbindung zu Abluftraum")
 
-    # -----------------------------
-    # 3. Feuchteschutz
-    # -----------------------------
+    # Feuchteschutz
     if results["delta"] > 0:
         warnings.append("Feuchteschutz nicht erfüllt")
 
