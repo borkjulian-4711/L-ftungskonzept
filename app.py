@@ -5,35 +5,80 @@ import tempfile
 from logic.ventilation import calculate_ventilation, calculate_ald_uld
 from export.pdf_generator import create_din_pdf
 
-st.title("Lüftungskonzept Tool")
+st.title("🌀 Lüftungskonzept Tool")
 
+# -----------------------------
 # Sidebar
+# -----------------------------
+st.sidebar.header("Projekt")
+
 ANE = st.sidebar.number_input("Fläche (m²)", 30, 300, 80)
 
 fWS = st.sidebar.selectbox("fWS", [0.2, 0.3, 0.4])
 
+# -----------------------------
 # Räume
+# -----------------------------
+st.subheader("Räume")
+
 df_rooms = st.data_editor(pd.DataFrame({
-    "Raum": ["Wohnzimmer", "Bad"],
-    "Typ": ["Zuluft", "Abluft"],
-    "Innenliegend": [False, True],
-    "Kategorie": ["", "Bad"]
+    "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+    "Typ": ["Zuluft", "Zuluft", "Abluft"],
+    "Innenliegend": [False, False, True],
+    "Kategorie": ["", "", "Bad"]
 }), num_rows="dynamic")
 
+# -----------------------------
+# Berechnung
+# -----------------------------
 if st.button("Berechnen"):
 
     q_required, q_abluft, delta, df_result = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald, n_uld, dist = calculate_ald_uld(delta, df_result)
 
-    st.write("Feuchteschutz:", q_required)
-    st.write("Abluft:", q_abluft)
+    st.subheader("Ergebnisse")
 
-    st.write("ALD:", n_ald)
-    st.write("ÜLD:", n_uld)
+    col1, col2, col3 = st.columns(3)
 
-    text = f"ALD: {n_ald}, ÜLD: {n_uld}"
+    col1.metric("Feuchteschutz", f"{round(q_required,1)} m³/h")
+    col2.metric("Abluft", f"{round(q_abluft,1)} m³/h")
 
-    if st.button("PDF erzeugen"):
+    if delta > 0:
+        col3.metric("Fehlend", f"{round(delta,1)} m³/h", delta_color="inverse")
+    else:
+        col3.metric("Reserve", f"{round(abs(delta),1)} m³/h")
+
+    st.divider()
+
+    st.subheader("ALD / ÜLD")
+
+    st.write(f"**ALD:** {n_ald} Stück")
+    st.write(f"**ÜLD:** {n_uld} Stück")
+
+    if dist:
+        st.write("**Verteilung ALD:**")
+        for room, count in dist.items():
+            st.write(f"- {room}: {count} Stück")
+
+    st.divider()
+
+    st.subheader("Raumübersicht")
+    st.dataframe(df_result, use_container_width=True)
+
+    # -----------------------------
+    # PDF
+    # -----------------------------
+    text = f"""
+Feuchteschutz: {q_required} m³/h  
+Abluft: {q_abluft} m³/h  
+
+ALD: {n_ald} Stück  
+ÜLD: {n_uld} Stück  
+"""
+
+    st.divider()
+
+    if st.button("📄 PDF erzeugen"):
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
@@ -48,4 +93,4 @@ if st.button("Berechnen"):
         )
 
         with open(tmp.name, "rb") as f:
-            st.download_button("Download PDF", f, file_name="report.pdf")
+            st.download_button("📥 Download PDF", f, file_name="lueftungskonzept.pdf")
