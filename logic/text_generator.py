@@ -60,7 +60,16 @@ Zuluft erfolgt über: {", ".join(supply)}.
 Abluft erfolgt über: {", ".join(exhaust)}.
 
 {flow_text}
+flow_text = ""
+for (a, b), d in res["uld_edges"].items():
 
+    a = str(a)
+    b = str(b)
+
+    flow_text += (
+        f"{a} → {b}: "
+        f"{d['Volumenstrom']} m³/h über {d['Anzahl']} ÜLD. "
+    )
 Es werden {n_ald} ALD und {n_uld} ÜLD vorgesehen.
 
 Innenliegende Räume gemäß DIN 18017-3.
