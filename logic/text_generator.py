@@ -1,91 +1,97 @@
-def clean_list(values):
-    return [str(v) for v in values if v and str(v) != "nan"]
+def generate_concept_text(data, project, mode="lang"):
 
-
-def generate_concept_text(ANE, res, mode="lang", meta=None):
-
-    q_req = round(res["q_required"], 1)
-    q_ab = round(res["q_abluft"], 1)
-    delta = round(res["delta"], 1)
-
-    n_ald = res["n_ald"]
-    n_uld = res["n_uld"]
+    levels = data.get("levels", {})
+    d = data.get("formblatt_d", {})
 
     # -----------------------------
-    # Räume bereinigen
+    # 1. EINLEITUNG (immer gleich)
     # -----------------------------
-    supply = clean_list(
-        res["df"][res["df"]["Typ"] == "Zuluft"]["Raum"].tolist()
-    )
+    intro = f"""
+1. Einleitung
 
-    exhaust = clean_list(
-        res["df"][res["df"]["Typ"] == "Abluft"]["Raum"].tolist()
-    )
+Für das nachfolgend beschriebene Bauvorhaben wurde ein Lüftungskonzept gemäß
+DIN 1946-6 „Lüftung von Wohnungen“ erstellt.
+
+Zusätzlich wurden, sofern erforderlich, innenliegende Räume gemäß DIN 18017-3
+„Lüftung von Bädern und Toilettenräumen ohne Außenfenster“ berücksichtigt.
+"""
 
     # -----------------------------
-    # Luftführung
+    # 2. PROJEKTBESCHREIBUNG
     # -----------------------------
-    flow_text = ""
-    for (a, b), d in res["uld_edges"].items():
+    projekt = f"""
+2. Projektbeschreibung
 
-        a = str(a)
-        b = str(b)
+Projekt: {project.get("projekt", "-")}
+Adresse: {project.get("adresse", "-")}
+Bearbeiter: {project.get("bearbeiter", "-")}
+Datum: {project.get("datum", "-")}
+"""
 
-        flow_text += (
-            f"{a} → {b}: "
-            f"{d['Volumenstrom']} m³/h "
-            f"über {d['Anzahl']} ÜLD. "
-        )
+    # -----------------------------
+    # 3. GRUNDLAGEN
+    # -----------------------------
+    grundlagen = f"""
+3. Grundlagen
 
-    base = f"Nutzungseinheit mit {ANE} m². "
+Die Berechnung basiert auf den Vorgaben der DIN 1946-6 unter Berücksichtigung
+der Nutzungseinheit sowie der vorgesehenen Nutzung.
 
-    # =============================
-    # KURZTEXT
-    # =============================
+Die maßgebliche Lüftungsstufe ergibt sich zu:
+Nennlüftung: {levels.get("NL", "-")} m³/h
+"""
+
+    # -----------------------------
+    # 4. KONZEPT (variabel)
+    # -----------------------------
     if mode == "kurz":
-        return f"""{base}
-Feuchteschutz: {q_req} m³/h, Abluft: {q_ab} m³/h.
-ALD: {n_ald}, ÜLD: {n_uld}.
-Innenliegende Räume gemäß DIN 18017-3.
+        konzept = f"""
+4. Lüftungskonzept
+
+Die Luftführung erfolgt von Zuluft- zu Ablufträumen.
+{d.get("massnahme", "-")}
 """
 
-    # =============================
-    # BEHÖRDENTEXT
-    # =============================
-    if mode == "behoerde":
-        return f"""
-Gemäß DIN 1946-6 wurde für die Nutzungseinheit ({ANE} m²) ein Lüftungskonzept erstellt.
+    elif mode == "behördlich":
+        konzept = f"""
+4. Lüftungskonzept
 
-Erforderlicher Volumenstrom: {q_req} m³/h.
-Vorhandene Abluft: {q_ab} m³/h.
+Die Auslegung des Lüftungskonzeptes erfolgt gemäß den Anforderungen
+der DIN 1946-6.
 
-{"Maßnahmen erforderlich." if delta > 0 else "Feuchteschutz erfüllt."}
+Die Luftvolumenströme wurden entsprechend der Nutzung und Raumfunktion
+dimensioniert. Die Luftführung erfolgt über definierte Überströmwege.
 
-Zuluft: {", ".join(supply)}
-Abluft: {", ".join(exhaust)}
+Innenliegende Räume werden gemäß DIN 18017-3 ventilatorgestützt entlüftet.
 
-{flow_text}
-
-Überströmöffnungen: {n_uld}.
+Maßnahme:
+{d.get("massnahme", "-")}
 """
 
-    # =============================
-    # LANGTEXT (Standard)
-    # =============================
-    return f"""
-Für die Nutzungseinheit mit {ANE} m² wurde ein Lüftungskonzept gemäß DIN 1946-6 erstellt.
+    else:  # lang
+        konzept = f"""
+4. Lüftungskonzept
 
-Feuchteschutz: {q_req} m³/h
-Abluft: {q_ab} m³/h
+Die erforderlichen Luftvolumenströme wurden auf Grundlage der
+Gebäudenutzung und Raumaufteilung ermittelt.
 
-{"Zusätzliche Maßnahmen erforderlich." if delta > 0 else "Feuchteschutz sichergestellt."}
+Die Luftführung erfolgt von Zuluft- in Ablufträume über Überströmöffnungen.
 
-Zuluft erfolgt über: {", ".join(supply)}
-Abluft erfolgt über: {", ".join(exhaust)}
+Innenliegende Räume werden gemäß DIN 18017-3 mechanisch entlüftet.
 
-{flow_text}
-
-Es werden {n_ald} ALD und {n_uld} ÜLD vorgesehen.
-
-Innenliegende Räume gemäß DIN 18017-3.
+Die gewählte Maßnahme lautet:
+{d.get("massnahme", "-")}
 """
+
+    # -----------------------------
+    # 5. ERGEBNIS
+    # -----------------------------
+    ergebnis = f"""
+5. Ergebnis
+
+Die Anforderungen an die Feuchteschutzlüftung werden eingehalten.
+
+Das Lüftungskonzept entspricht den Anforderungen der DIN 1946-6.
+"""
+
+    return intro + projekt + grundlagen + konzept + ergebnis
