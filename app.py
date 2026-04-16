@@ -15,11 +15,13 @@ from logic.ald import calculate_ald_din
 from logic.system_logic import evaluate_system
 from logic.text_generator import generate_concept_text
 from logic.validation import validate_din
+from logic.correction_engine import generate_corrections
 
 from export.pdf_generator import create_multi_pdf
 
 
 st.title("🌀 Lüftungskonzept DIN 1946-6")
+
 
 # -----------------------------
 # PROJEKT
@@ -34,6 +36,7 @@ project_data = {
     "bearbeiter": bearbeiter
 }
 
+
 # -----------------------------
 # SYSTEM
 # -----------------------------
@@ -41,6 +44,7 @@ system = st.selectbox(
     "System",
     ["freie Lüftung", "ventilatorgestützt", "kombiniert"]
 )
+
 
 # -----------------------------
 # GRUNDLAGEN
@@ -52,6 +56,7 @@ level = st.selectbox("Lüftungsstufe", list(levels.keys()))
 qv_selected = levels[level]
 
 st.write("qv:", qv_selected, "m³/h")
+
 
 # -----------------------------
 # RAUMTABELLE
@@ -90,11 +95,14 @@ df_rooms = st.data_editor(
     }
 )
 
-# Berechnung
+# -----------------------------
+# BERECHNUNG
+# -----------------------------
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
 
 st.dataframe(df_rooms)
+
 
 # -----------------------------
 # INFILTRATION
@@ -106,11 +114,13 @@ luftdicht = st.checkbox("luftdicht")
 ez = get_ez_din("EFH", wind, luftdicht)
 q_inf = calculate_infiltration_din(Aenv, ez)
 
+
 # -----------------------------
 # SCHACHT
 # -----------------------------
 shaft = st.checkbox("Schachtlüftung")
 q_shaft = calculate_shaft_flow() if shaft else 0
+
 
 # -----------------------------
 # SYSTEMLOGIK
@@ -127,17 +137,20 @@ elif system == "ventilatorgestützt":
 elif system == "kombiniert":
     q_supply = q_mech + q_inf + q_shaft
 
+
 # -----------------------------
 # ALD
 # -----------------------------
 ald = calculate_ald_din(qv_selected, q_supply, wind)
 st.write("ALD:", ald)
 
+
 # -----------------------------
 # SYSTEMBEWERTUNG
 # -----------------------------
 res = evaluate_system(q_mech, qv_selected, q_supply)
 st.write("Status:", res["status"])
+
 
 # -----------------------------
 # VALIDIERUNG
@@ -162,6 +175,26 @@ if warnings:
 if not errors:
     st.success("DIN-Anforderungen erfüllt")
 
+
+# -----------------------------
+# KORREKTUREN
+# -----------------------------
+st.header("Korrekturvorschläge")
+
+corrections = generate_corrections(
+    df_rooms,
+    errors,
+    qv_selected,
+    q_supply
+)
+
+if corrections:
+    for c in corrections:
+        st.info(c)
+else:
+    st.success("Keine Korrekturen erforderlich")
+
+
 # -----------------------------
 # PRÜFBERICHT
 # -----------------------------
@@ -185,6 +218,7 @@ report = generate_concept_text(
 
 st.text_area("Prüfbericht", report, height=400)
 
+
 # -----------------------------
 # PDF EXPORT
 # -----------------------------
@@ -203,7 +237,8 @@ if st.button("📄 PDF Export"):
                     "errors": errors,
                     "warnings": warnings,
                     "summary": summary
-                }
+                },
+                "corrections": corrections
             }
         }
     })
