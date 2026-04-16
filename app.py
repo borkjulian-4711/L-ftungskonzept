@@ -5,34 +5,20 @@ import tempfile
 from config import FIRMA
 import logic.din1946_core as core
 
-from logic.air_network import propagate_flows, calculate_uld
-from logic.din18017 import apply_din18017
 from logic.infiltration import (
     get_ez_din,
     calculate_infiltration_din,
     calculate_shaft_flow
 )
+
 from logic.ald import calculate_ald_din
 from logic.system_logic import evaluate_system
+from logic.text_generator import generate_concept_text
+
 from export.pdf_generator import create_multi_pdf
 
 
-st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
-
-
-# -----------------------------
-# FIRMA
-# -----------------------------
-st.write(FIRMA["name"])
-st.write(FIRMA["anschrift"])
-st.write(FIRMA["kontakt"])
-
-firm_data = {
-    "firma": FIRMA["name"],
-    "anschrift": FIRMA["anschrift"],
-    "kontakt": FIRMA["kontakt"],
-    "logo_path": FIRMA["logo_path"]
-}
+st.title("🌀 Lüftungskonzept DIN 1946-6")
 
 
 # -----------------------------
@@ -75,15 +61,16 @@ st.write("qv:", qv_selected, "m³/h")
 # -----------------------------
 df_rooms = pd.DataFrame({
     "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+    "Fläche": [20, 15, 6],
     "Typ": ["Zuluft", "Zuluft", "Abluft"],
-    "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"]
+    "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+    "Überströmt nach": ["Flur", "Flur", ""]
 })
 
 df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
 
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
-df_rooms = apply_din18017(df_rooms)
 
 st.dataframe(df_rooms)
 
@@ -92,7 +79,7 @@ st.dataframe(df_rooms)
 # INFILTRATION
 # -----------------------------
 wind = st.selectbox("Wind", ["windschwach", "windstark"])
-Aenv = st.number_input("Hüllfläche", 10.0, 500.0, 200.0)
+Aenv = st.number_input("Hüllfläche Aenv", 10.0, 500.0, 200.0)
 luftdicht = st.checkbox("luftdicht")
 
 ez = get_ez_din("EFH", wind, luftdicht)
@@ -138,25 +125,43 @@ st.write("Status:", res["status"])
 
 
 # -----------------------------
-# PDF
+# PRÜFBERICHT
 # -----------------------------
-if st.button("PDF Export"):
+summary = {
+    "qv": qv_selected,
+    "zu": q_supply,
+    "ab": q_mech,
+    "inf": q_inf,
+    "status": res["status"]
+}
+
+report = generate_concept_text(
+    {
+        "levels": levels,
+        "result": res,
+        "summary": summary
+    },
+    project_data,
+    mode="behördlich"
+)
+
+st.text_area("Prüfbericht", report, height=400)
+
+
+# -----------------------------
+# PDF EXPORT
+# -----------------------------
+if st.button("📄 PDF Export"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
     create_multi_pdf(tmp.name, {
         "WE1": {
             "meta": project_data,
-            "firma": firm_data,
+            "firma": FIRMA,
             "res": {
                 "df_rooms": df_rooms,
-                "summary": {
-                    "zu": q_supply,
-                    "ab": q_mech,
-                    "inf": q_inf,
-                    "diff": q_supply - q_mech,
-                    "status": res["status"]
-                }
+                "formblatt_e": report
             }
         }
     })
