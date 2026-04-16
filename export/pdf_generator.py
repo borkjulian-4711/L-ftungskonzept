@@ -2,12 +2,68 @@ from reportlab.platypus import *
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from datetime import datetime
+import os
 
 styles = getSampleStyleSheet()
 
 
 # -----------------------------
-# STYLES
+# KONFIG
+# -----------------------------
+LOGO_PATH = "logo.png"  # <- dein Logo im Repo
+
+
+# -----------------------------
+# HEADER / FOOTER
+# -----------------------------
+def draw_header_footer(canvas, doc):
+
+    width, height = A4
+
+    # -----------------------------
+    # LOGO (oben rechts)
+    # -----------------------------
+    if os.path.exists(LOGO_PATH):
+        canvas.drawImage(
+            LOGO_PATH,
+            width - 120,
+            height - 70,
+            width=100,
+            preserveAspectRatio=True,
+            mask='auto'
+        )
+
+    # -----------------------------
+    # TITEL
+    # -----------------------------
+    canvas.setFont("Helvetica-Bold", 10)
+    canvas.drawString(40, height - 40, "Lüftungskonzept nach DIN 1946-6")
+
+    # -----------------------------
+    # DATUM
+    # -----------------------------
+    canvas.setFont("Helvetica", 8)
+    canvas.drawString(
+        40,
+        height - 55,
+        f"Erstellt am: {datetime.now().strftime('%d.%m.%Y')}"
+    )
+
+    # -----------------------------
+    # FUSSZEILE
+    # -----------------------------
+    canvas.setFont("Helvetica", 8)
+    canvas.drawRightString(
+        width - 40,
+        20,
+        f"Seite {doc.page}"
+    )
+
+
+# -----------------------------
+# TABELLENSTYLE
 # -----------------------------
 def box_table(data, colWidths=None, rowHeights=None):
     return Table(
@@ -27,72 +83,68 @@ def checkbox(value):
 
 
 # -----------------------------
-# PDF
+# PDF GENERATOR
 # -----------------------------
 def create_multi_pdf(file, project):
 
-    doc = SimpleDocTemplate(file, pagesize=A4)
+    doc = SimpleDocTemplate(
+        file,
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=90,
+        bottomMargin=40
+    )
+
     elements = []
 
     for name, data in project.items():
 
         res = data["res"]
+        meta = data.get("meta", {})
 
         # =============================
-        # TITEL
-        # =============================
-        elements.append(Paragraph(
-            "<b>LÜFTUNGSKONZEPT NACH DIN 1946-6</b>",
-            styles["Title"]
-        ))
-
-        elements.append(Spacer(1, 10))
-
-        # =============================
-        # 1. ALLGEMEINE ANGABEN
+        # ALLGEMEINE ANGABEN
         # =============================
         elements.append(Paragraph("<b>1. Allgemeine Angaben</b>", styles["Heading3"]))
 
         elements.append(box_table([
+            ["Projekt", meta.get("projekt", "")],
+            ["Adresse", meta.get("adresse", "")],
             ["Wohnung", name],
-            ["Projekt", data.get("meta", {}).get("projekt", "")],
-            ["Adresse", data.get("meta", {}).get("adresse", "")],
-            ["Bearbeiter", data.get("meta", {}).get("bearbeiter", "")],
+            ["Bearbeiter", meta.get("bearbeiter", "")],
         ], colWidths=[150, 300]))
 
         elements.append(Spacer(1, 10))
 
         # =============================
-        # 2. FORMBLATT A
+        # FORMBLATT A
         # =============================
-        elements.append(Paragraph("<b>2. Notwendigkeit Lüftungskonzept</b>", styles["Heading3"]))
-
         fb_a = res["formblatt_a"]
+
+        elements.append(Paragraph("<b>2. Notwendigkeit</b>", styles["Heading3"]))
 
         elements.append(box_table([
             ["Lüftungskonzept erforderlich", checkbox(fb_a["erforderlich"])],
             ["Begründung", fb_a["begruendung"]],
-        ], colWidths=[300, 150]))
+        ]))
 
         elements.append(Spacer(1, 10))
 
         # =============================
-        # 3. FORMBLATT B
+        # FORMBLATT B
         # =============================
-        elements.append(Paragraph("<b>3. Gebäudedaten</b>", styles["Heading3"]))
-
         fb_b = res["formblatt_b"]
 
-        b_data = []
-        for k, v in fb_b.items():
-            b_data.append([k, str(v)])
+        elements.append(Paragraph("<b>3. Gebäudedaten</b>", styles["Heading3"]))
 
-        elements.append(box_table(b_data, colWidths=[200, 250]))
+        b_data = [[k, str(v)] for k, v in fb_b.items()]
+        elements.append(box_table(b_data))
 
         elements.append(Spacer(1, 10))
 
         # =============================
-        # 4. FORMBLATT C
+        # FORMBLATT C
         # =============================
         elements.append(Paragraph("<b>4. Lüftungsstufen</b>", styles["Heading3"]))
 
@@ -111,11 +163,11 @@ def create_multi_pdf(file, project):
         elements.append(Spacer(1, 10))
 
         # =============================
-        # 5. FORMBLATT D
+        # FORMBLATT D
         # =============================
-        elements.append(Paragraph("<b>5. Maßnahmen</b>", styles["Heading3"]))
-
         fb_d = res["formblatt_d"]
+
+        elements.append(Paragraph("<b>5. Maßnahmen</b>", styles["Heading3"]))
 
         elements.append(box_table([
             ["Maßnahme", fb_d["massnahme"]],
@@ -125,9 +177,9 @@ def create_multi_pdf(file, project):
         elements.append(Spacer(1, 10))
 
         # =============================
-        # 6. FORMBLATT E
+        # FORMBLATT E
         # =============================
-        elements.append(Paragraph("<b>6. Ergebnis / Konzept</b>", styles["Heading3"]))
+        elements.append(Paragraph("<b>6. Ergebnis</b>", styles["Heading3"]))
 
         elements.append(box_table([
             [res["formblatt_e"]]
@@ -147,4 +199,4 @@ def create_multi_pdf(file, project):
 
         elements.append(PageBreak())
 
-    doc.build(elements)
+    doc.build(elements, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
