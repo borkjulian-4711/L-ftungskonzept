@@ -1,20 +1,9 @@
-# -----------------------------
-# IMPORT FIX (WICHTIG!)
-# -----------------------------
-
 import streamlit as st
 import pandas as pd
 import tempfile
 
 # DIN Kern
-from logic.din1946_core import (
-    calculate_qv_ges,
-    calculate_levels,
-    distribute_airflows,
-    apply_exhaust_values,
-    balance_system,
-    balance_ventilation_system
-)
+import logic.din1946_core as core
 
 # Luftnetz
 from logic.air_network import propagate_flows, calculate_uld
@@ -40,7 +29,9 @@ from logic.formblatt_a import evaluate_formblatt_a
 from logic.formblatt_b import evaluate_formblatt_b
 from logic.formblatt_c import evaluate_formblatt_c
 from logic.formblatt_d import evaluate_formblatt_d
-from logic.formblatt_e import generate_formblatt_e
+
+# Text
+from logic.text_generator import generate_concept_text
 
 # Validierung
 from logic.validation import validate_din
@@ -55,7 +46,42 @@ from export.pdf_generator import create_multi_pdf
 st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
 
 # -----------------------------
-# SYSTEMWAHL
+# FIRMA / LOGO
+# -----------------------------
+st.header("Firma / Briefkopf")
+
+logo_file = st.file_uploader("Firmenlogo (PNG)", type=["png"])
+
+firma = st.text_input("Firma")
+anschrift = st.text_input("Anschrift")
+kontakt = st.text_input("Kontakt")
+
+firm_data = {
+    "firma": firma,
+    "anschrift": anschrift,
+    "kontakt": kontakt,
+    "logo": logo_file
+}
+
+# -----------------------------
+# PROJEKT
+# -----------------------------
+st.header("Projektangaben")
+
+projekt_name = st.text_input("Projekt")
+adresse = st.text_input("Projektadresse")
+bearbeiter = st.text_input("Bearbeiter")
+datum = st.date_input("Datum")
+
+project_data = {
+    "projekt": projekt_name,
+    "adresse": adresse,
+    "bearbeiter": bearbeiter,
+    "datum": datum
+}
+
+# -----------------------------
+# SYSTEM
 # -----------------------------
 system = st.selectbox(
     "Lüftungssystem",
@@ -103,8 +129,8 @@ st.header("Grunddaten")
 
 ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
-qv = calculate_qv_ges(ANE)
-levels = calculate_levels(qv)
+qv = core.calculate_qv_ges(ANE)
+levels = core.calculate_levels(qv)
 
 st.subheader("Lüftungsstufen")
 st.write(levels)
@@ -113,7 +139,7 @@ level = st.selectbox("Auslegungsstufe", list(levels.keys()))
 qv_selected = levels[level]
 
 # -----------------------------
-# RAUMTABELLE
+# RÄUME
 # -----------------------------
 st.header("Räume & Luftführung")
 
@@ -155,10 +181,10 @@ df_rooms = st.data_editor(
 df_rooms = df_rooms.fillna(0)
 
 # -----------------------------
-# DIN VERTEILUNG
+# BERECHNUNG
 # -----------------------------
-df_rooms = distribute_airflows(df_rooms, qv_selected)
-df_rooms = apply_exhaust_values(df_rooms)
+df_rooms = core.distribute_airflows(df_rooms, qv_selected)
+df_rooms = core.apply_exhaust_values(df_rooms)
 df_rooms = apply_din18017(df_rooms)
 
 st.subheader("Raumweise Luftmengen")
@@ -170,7 +196,6 @@ st.dataframe(df_rooms)
 flows = propagate_flows(df_rooms)
 
 st.subheader("Luftnetz")
-
 for r, f in flows.items():
     st.write(f"{r}: {round(f,1)} m³/h")
 
@@ -180,7 +205,6 @@ for r, f in flows.items():
 uld = calculate_uld(flows, df_rooms)
 
 st.subheader("Überströmöffnungen")
-
 for (a, b), d in uld.items():
     st.write(f"{a} → {b}: {d['Anzahl']} Stück ({d['Volumenstrom']} m³/h)")
 
@@ -188,9 +212,9 @@ for (a, b), d in uld.items():
 # BILANZ
 # -----------------------------
 if system == "ventilatorgestützt":
-    df_rooms, zu, ab = balance_ventilation_system(df_rooms)
+    df_rooms, zu, ab = core.balance_ventilation_system(df_rooms)
 else:
-    zu, ab, _ = balance_system(df_rooms)
+    zu, ab, _ = core.balance_system(df_rooms)
 
 # -----------------------------
 # INFILTRATION
@@ -216,7 +240,6 @@ else:
 delta = q_eff - ab
 
 st.subheader("Gesamtbilanz")
-
 st.write("Zuluft:", zu)
 st.write("Infiltration:", q_inf)
 st.write("Effektiv:", q_eff)
@@ -227,7 +250,6 @@ st.write("Differenz:", delta)
 # SYSTEMBEWERTUNG
 # -----------------------------
 q_mech = df_rooms[df_rooms["Typ"] == "Abluft"]["Abluft (m³/h)"].sum()
-
 result = evaluate_system(q_mech, qv_selected, q_inf)
 
 st.header("Systembewertung")
@@ -241,41 +263,25 @@ st.header("ALD-Auslegung")
 if result["ald"]:
     q_needed = max(0, qv_selected - (q_mech + q_inf))
     ald = calculate_ald(q_needed)
-
     st.warning("ALD erforderlich")
     st.write("Anzahl:", ald["anzahl"])
 else:
     st.success("Keine ALDs erforderlich")
 
 # -----------------------------
-# VALIDIERUNG
+# TEXT
 # -----------------------------
-errors, warnings = validate_din(df_rooms, flows, qv_selected, ab)
+st.header("Konzept")
 
-if errors:
-    st.error(errors)
+mode = st.selectbox("Textstil", ["kurz", "lang", "behördlich"])
 
-if warnings:
-    st.warning(warnings)
-
-# -----------------------------
-# FORMBLÄTTER
-# -----------------------------
-formblatt_c = evaluate_formblatt_c(levels, ab)
-
-formblatt_d = evaluate_formblatt_d(
-    formblatt_a,
-    formblatt_b,
-    formblatt_c
+formblatt_e = generate_concept_text(
+    {"levels": levels, "formblatt_d": {"massnahme": result["status"]}},
+    project_data,
+    mode
 )
 
-formblatt_e = generate_formblatt_e({
-    "levels": levels,
-    "formblatt_d": formblatt_d
-})
-
-st.header("Konzept")
-st.text_area("Text", formblatt_e, height=250)
+st.text_area("Text", formblatt_e, height=350)
 
 # -----------------------------
 # PDF EXPORT
@@ -288,19 +294,16 @@ if st.button("📄 PDF Export"):
 
     create_multi_pdf(tmp.name, {
         "WE1": {
-            "meta": {
-                "projekt": "Projekt",
-                "adresse": "Adresse",
-                "bearbeiter": "Bearbeiter"
-            },
+            "meta": project_data,
             "res": {
                 "formblatt_a": formblatt_a,
                 "formblatt_b": formblatt_b,
-                "formblatt_c": formblatt_c,
-                "formblatt_d": formblatt_d,
+                "formblatt_c": {},
+                "formblatt_d": {},
                 "formblatt_e": formblatt_e,
                 "levels": levels
-            }
+            },
+            "firma": firm_data
         }
     })
 
