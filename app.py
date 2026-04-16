@@ -1,206 +1,212 @@
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, Table, TableStyle
+import streamlit as st
+import pandas as pd
+import tempfile
+
+# CONFIG (Firma fix)
+from config import FIRMA
+
+# DIN Kern
+import logic.din1946_core as core
+
+# Luftnetz
+from logic.air_network import propagate_flows, calculate_uld
+
+# DIN 18017
+from logic.din18017 import apply_din18017
+
+# Infiltration
+from logic.infiltration import (
+    get_ez,
+    calculate_infiltration,
+    calculate_effective_supply
 )
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.pdfgen import canvas
 
-styles = getSampleStyleSheet()
+# ALD
+from logic.ald import calculate_ald
 
+# Systembewertung
+from logic.system_logic import evaluate_system
+
+# Formblätter
+from logic.formblatt_a import evaluate_formblatt_a
+from logic.formblatt_b import evaluate_formblatt_b
+
+# Text
+from logic.text_generator import generate_concept_text
+
+# Validierung
+from logic.validation import validate_din
+
+# PDF
+from export.pdf_generator import create_multi_pdf
+
+
+st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
 
 # -----------------------------
-# HEADER / FOOTER
+# FIRMA (fest)
 # -----------------------------
-def add_header_footer(c: canvas.Canvas, doc, firma, meta):
-    c.setFont("Helvetica", 8)
+st.header("Firma")
 
-    # Kopf
-    c.drawString(2*cm, 28*cm, firma.get("firma", ""))
-    c.drawRightString(19*cm, 28*cm, meta.get("projekt", ""))
+st.write(FIRMA["name"])
+st.write(FIRMA["anschrift"])
+st.write(FIRMA["kontakt"])
 
-    # Fuß
-    c.drawString(2*cm, 1.5*cm, firma.get("kontakt", ""))
-    c.drawRightString(19*cm, 1.5*cm, f"Seite {doc.page}")
-
+firm_data = {
+    "firma": FIRMA["name"],
+    "anschrift": FIRMA["anschrift"],
+    "kontakt": FIRMA["kontakt"],
+    "logo_path": FIRMA["logo_path"]
+}
 
 # -----------------------------
-# DECKBLATT
+# PROJEKT
 # -----------------------------
-def create_cover(story, firma, meta):
+st.header("Projektangaben")
 
-    if firma.get("logo"):
-        logo = firma["logo"]
-        with open("temp_logo.png", "wb") as f:
-            f.write(logo.read())
-        story.append(Image("temp_logo.png", width=6*cm, height=3*cm))
+projekt_name = st.text_input("Projekt")
+adresse = st.text_input("Projektadresse")
+bearbeiter = st.text_input("Bearbeiter")
+datum = st.date_input("Datum")
 
-    story.append(Spacer(1, 40))
-    story.append(Paragraph("<b>LÜFTUNGSKONZEPT</b>", styles["Title"]))
-    story.append(Spacer(1, 20))
-    story.append(Paragraph("nach DIN 1946-6", styles["Heading2"]))
-    story.append(Spacer(1, 40))
+project_data = {
+    "projekt": projekt_name,
+    "adresse": adresse,
+    "bearbeiter": bearbeiter,
+    "datum": str(datum)
+}
 
-    story.append(Paragraph(f"<b>Projekt:</b> {meta.get('projekt','')}", styles["Normal"]))
-    story.append(Paragraph(f"<b>Adresse:</b> {meta.get('adresse','')}", styles["Normal"]))
-    story.append(Paragraph(f"<b>Bearbeiter:</b> {meta.get('bearbeiter','')}", styles["Normal"]))
-    story.append(Paragraph(f"<b>Datum:</b> {meta.get('datum','')}", styles["Normal"]))
-
-    story.append(Spacer(1, 60))
-
-    story.append(Paragraph(firma.get("firma",""), styles["Normal"]))
-    story.append(Paragraph(firma.get("anschrift",""), styles["Normal"]))
-    story.append(Paragraph(firma.get("kontakt",""), styles["Normal"]))
-
-    story.append(PageBreak())
-
+# -----------------------------
+# SYSTEM
+# -----------------------------
+system = st.selectbox(
+    "Lüftungssystem",
+    ["freie Lüftung", "ventilatorgestützt", "kombiniert"]
+)
 
 # -----------------------------
 # FORMBLATT A
 # -----------------------------
-def add_formblatt_a(story, data):
+st.header("Formblatt A")
 
-    story.append(Paragraph("<b>Formblatt A – Notwendigkeit Lüftungskonzept</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
+neubau = st.checkbox("Neubau")
+sanierung = st.checkbox("Sanierung")
+fensteranteil = st.slider("Fensteranteil (%)", 0, 100, 50) / 100
+luftdicht = st.checkbox("Luftdicht")
 
-    table_data = [
-        ["Kriterium", "Ergebnis"],
-        ["Neubau", str(data.get("neubau",""))],
-        ["Sanierung", str(data.get("sanierung",""))],
-        ["Luftdicht", str(data.get("luftdicht",""))],
-        ["Ergebnis", str(data.get("ergebnis",""))],
-    ]
-
-    table = Table(table_data)
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
+formblatt_a = evaluate_formblatt_a(
+    neubau, sanierung, fensteranteil, luftdicht
+)
 
 # -----------------------------
 # FORMBLATT B
 # -----------------------------
-def add_formblatt_b(story, data):
+st.header("Formblatt B")
 
-    story.append(Paragraph("<b>Formblatt B – Gebäudeangaben</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
+gebaeudetyp = st.selectbox("Gebäudetyp", ["EFH", "MFH", "Wohnung"])
+baujahr = st.number_input("Baujahr", 1900, 2025, 2000)
 
-    table_data = [
-        ["Parameter", "Wert"],
-        ["Gebäudetyp", data.get("gebaeudetyp","")],
-        ["Baujahr", str(data.get("baujahr",""))],
-        ["Personen", str(data.get("personen",""))],
-    ]
+personen = st.number_input("Personen", 1, 10, 2)
+nutzung = st.selectbox("Nutzung", ["normal", "reduziert", "hoch"])
 
-    table = Table(table_data)
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
+formblatt_b = evaluate_formblatt_b(
+    gebaeudetyp, baujahr, 1,
+    personen, nutzung, True, "mittel"
+)
 
 # -----------------------------
-# FORMBLATT C (RAUMTABELLE)
+# GRUNDLAGEN
 # -----------------------------
-def add_formblatt_c(story, df_rooms):
+ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
-    story.append(Paragraph("<b>Formblatt C – Raumweise Luftvolumenströme</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
+qv = core.calculate_qv_ges(ANE)
+levels = core.calculate_levels(qv)
 
-    table_data = [[
-        "Raum", "Typ", "Fläche (m²)",
-        "Zuluft (m³/h)", "Abluft (m³/h)", "Überströmt nach"
-    ]]
-
-    for _, row in df_rooms.iterrows():
-        table_data.append([
-            str(row.get("Raum","")),
-            str(row.get("Typ","")),
-            str(row.get("Fläche","")),
-            str(row.get("Zuluft (m³/h)",0)),
-            str(row.get("Abluft (m³/h)",0)),
-            str(row.get("Überströmt nach",""))
-        ])
-
-    table = Table(table_data, repeatRows=1)
-
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
+level = st.selectbox("Lüftungsstufe", list(levels.keys()))
+qv_selected = levels[level]
 
 # -----------------------------
-# FORMBLATT E (BILANZ)
+# RÄUME
 # -----------------------------
-def add_formblatt_e(story, summary):
+df_rooms = pd.DataFrame({
+    "Raum": ["Wohnzimmer", "Flur", "Bad"],
+    "Fläche": [20, 10, 6],
+    "Typ": ["Zuluft", "Überström", "Abluft"],
+    "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Flur", "Bad"],
+    "Überströmt nach": ["Flur", "Bad", ""]
+})
 
-    story.append(Paragraph("<b>Formblatt E – Luftmengenbilanz</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
+df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
 
-    table_data = [
-        ["Parameter", "Wert"],
-        ["Zuluft gesamt", f"{summary.get('zu',0)} m³/h"],
-        ["Abluft gesamt", f"{summary.get('ab',0)} m³/h"],
-        ["Infiltration", f"{summary.get('inf',0)} m³/h"],
-        ["Differenz", f"{summary.get('diff',0)} m³/h"],
-        ["Ergebnis", summary.get("status","")]
-    ]
+df_rooms = core.distribute_airflows(df_rooms, qv_selected)
+df_rooms = core.apply_exhaust_values(df_rooms)
+df_rooms = apply_din18017(df_rooms)
 
-    table = Table(table_data)
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
+st.dataframe(df_rooms)
 
 # -----------------------------
-# MAIN PDF
+# NETZ
 # -----------------------------
-def create_multi_pdf(path, data):
+flows = propagate_flows(df_rooms)
+uld = calculate_uld(flows, df_rooms)
 
-    doc = SimpleDocTemplate(path)
-    story = []
+# -----------------------------
+# BILANZ
+# -----------------------------
+zu, ab, _ = core.balance_system(df_rooms)
 
-    for name, content in data.items():
+# Infiltration
+q_inf = calculate_infiltration(40, get_ez("windschwach", gebaeudetyp))
 
-        firma = content.get("firma", {})
-        meta = content.get("meta", {})
-        res = content.get("res", {})
+q_eff = zu + q_inf
+delta = q_eff - ab
 
-        # Deckblatt
-        create_cover(story, firma, meta)
+result = evaluate_system(ab, qv_selected, q_inf)
 
-        # Text
-        story.append(Paragraph("<b>Lüftungskonzept</b>", styles["Heading2"]))
-        story.append(Spacer(1, 20))
-        story.append(Paragraph(res.get("formblatt_e","").replace("\n","<br/>"), styles["Normal"]))
-        story.append(PageBreak())
+# -----------------------------
+# TEXT
+# -----------------------------
+mode = st.selectbox("Textstil", ["kurz", "lang", "behördlich"])
 
-        # Anlagen
-        story.append(Paragraph("<b>Anlagen</b>", styles["Heading1"]))
-        story.append(PageBreak())
+formblatt_e = generate_concept_text(
+    {"levels": levels, "formblatt_d": {"massnahme": result["status"]}},
+    project_data,
+    mode
+)
 
-        add_formblatt_a(story, res.get("formblatt_a", {}))
-        add_formblatt_b(story, res.get("formblatt_b", {}))
-        add_formblatt_c(story, res.get("df_rooms"))
-        add_formblatt_e(story, res.get("summary"))
+st.text_area("Konzept", formblatt_e, height=300)
 
-    def on_page(canvas, doc):
-        add_header_footer(canvas, doc, firma, meta)
+# -----------------------------
+# SUMMARY
+# -----------------------------
+summary = {
+    "zu": zu,
+    "ab": ab,
+    "inf": q_inf,
+    "diff": delta,
+    "status": result["status"]
+}
 
-    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+# -----------------------------
+# PDF
+# -----------------------------
+if st.button("📄 PDF Export"):
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+
+    create_multi_pdf(tmp.name, {
+        "WE1": {
+            "meta": project_data,
+            "firma": firm_data,
+            "res": {
+                "formblatt_a": formblatt_a,
+                "formblatt_b": formblatt_b,
+                "formblatt_e": formblatt_e,
+                "df_rooms": df_rooms,
+                "summary": summary
+            }
+        }
+    })
+
+    with open(tmp.name, "rb") as f:
+        st.download_button("Download PDF", f)
