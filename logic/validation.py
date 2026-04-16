@@ -1,50 +1,71 @@
-def validate_din(df, flows, q_req, q_ab):
+# logic/validation.py
+
+def validate_din(df_rooms, qv_required, q_supply, system):
 
     errors = []
     warnings = []
 
-    raeume = df["Raum"].tolist()
+    # ---------------------------------
+    # 1. Innenliegende Räume
+    # ---------------------------------
+    for _, row in df_rooms.iterrows():
+        if row.get("Innenliegend", False):
+            if row.get("Typ") != "Abluft":
+                errors.append(
+                    f"Innenliegender Raum '{row['Raum']}' muss Abluft sein."
+                )
 
-    # -----------------------------
-    # Pflicht: Abluft vorhanden
-    # -----------------------------
-    if not any(df["Typ"] == "Abluft"):
-        errors.append("Kein Abluftraum vorhanden")
+    # ---------------------------------
+    # 2. Mindest-Abluft
+    # ---------------------------------
+    min_values = {
+        "Küche": 60,
+        "Bad": 40,
+        "WC": 30
+    }
 
-    # -----------------------------
-    # Pflicht: Zuluft vorhanden
-    # -----------------------------
-    if not any(df["Typ"] == "Zuluft"):
-        errors.append("Kein Zuluft-Raum vorhanden")
+    for _, row in df_rooms.iterrows():
+        if row.get("Typ") == "Abluft":
+            kat = row.get("Kategorie (DIN 1946-6)")
+            ab = row.get("Abluft (m³/h)", 0)
 
-    # -----------------------------
-    # Überströmziel prüfen
-    # -----------------------------
-    for _, row in df.iterrows():
-        ziel = row.get("Überströmt nach", "")
-        if ziel and ziel not in raeume:
-            errors.append(f"Überströmziel '{ziel}' existiert nicht")
+            if kat in min_values and ab < min_values[kat]:
+                errors.append(
+                    f"Abluft in '{row['Raum']}' zu gering ({ab} m³/h)."
+                )
 
-    # -----------------------------
-    # Selbstverbindung
-    # -----------------------------
-    for _, row in df.iterrows():
-        if row["Raum"] == row.get("Überströmt nach", ""):
-            errors.append(f"Raum '{row['Raum']}' strömt in sich selbst")
+    # ---------------------------------
+    # 3. Feuchteschutz
+    # ---------------------------------
+    if q_supply < qv_required:
+        errors.append(
+            f"Feuchteschutz nicht erfüllt ({q_supply} < {qv_required} m³/h)."
+        )
 
-    # -----------------------------
-    # Luftführung endet nicht in Abluft
-    # -----------------------------
-    for r, f in flows.items():
-        typ = df[df["Raum"] == r]["Typ"].values[0]
+    # ---------------------------------
+    # 4. Überströmung
+    # ---------------------------------
+    abluft_raeume = df_rooms[df_rooms["Typ"] == "Abluft"]["Raum"].tolist()
 
-        if f > 0 and typ != "Abluft":
-            warnings.append(f"Luft endet in '{r}', nicht im Abluftraum")
+    for _, row in df_rooms.iterrows():
+        if row.get("Typ") == "Zuluft":
+            ziel = row.get("Überströmt nach", "")
 
-    # -----------------------------
-    # Feuchteschutz
-    # -----------------------------
-    if q_ab < q_req:
-        warnings.append("Feuchteschutzlüftung nicht erfüllt")
+            if ziel == "" or ziel not in abluft_raeume:
+                warnings.append(
+                    f"Zuluft-Raum '{row['Raum']}' ohne sicheren Überströmweg."
+                )
+
+    # ---------------------------------
+    # 5. Bilanz ventilatorgestützt
+    # ---------------------------------
+    if system == "ventilatorgestützt":
+        zu = df_rooms["Zuluft (m³/h)"].sum()
+        ab = df_rooms["Abluft (m³/h)"].sum()
+
+        if abs(zu - ab) > 5:
+            errors.append(
+                f"Zuluft und Abluft nicht ausgeglichen ({zu} ≠ {ab})."
+            )
 
     return errors, warnings
