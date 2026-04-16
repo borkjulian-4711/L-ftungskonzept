@@ -8,13 +8,13 @@ def calculate_qv_ges(ANE, level="FL"):
     h = 2.5
     V = ANE * h
 
-    if level == "FL":      # Feuchteschutz
+    if level == "FL":
         n = 0.3
-    elif level == "RL":    # Reduzierte Lüftung
+    elif level == "RL":
         n = 0.5
-    elif level == "NL":    # Nennlüftung
+    elif level == "NL":
         n = 0.7
-    elif level == "IL":    # Intensivlüftung
+    elif level == "IL":
         n = 1.0
     else:
         n = 0.5
@@ -23,9 +23,6 @@ def calculate_qv_ges(ANE, level="FL"):
 
 
 def calculate_levels(ANE):
-    """
-    Alle Lüftungsstufen berechnen
-    """
     return {
         "FL": calculate_qv_ges(ANE, "FL"),
         "RL": calculate_qv_ges(ANE, "RL"),
@@ -35,7 +32,6 @@ def calculate_levels(ANE):
 
 
 def distribute_airflows(df_rooms, qv_total):
-
     df = df_rooms.copy()
 
     factors = {
@@ -64,7 +60,6 @@ def distribute_airflows(df_rooms, qv_total):
 
 
 def apply_exhaust_values(df):
-
     df = df.copy()
 
     mapping = {
@@ -87,15 +82,40 @@ def apply_exhaust_values(df):
 
 
 def balance_system(df):
-
     zu = df["Zuluft (m³/h)"].sum()
     ab = df["Abluft (m³/h)"].sum()
 
     return zu, ab, zu - ab
 
 
-def balance_ventilation_system(df):
+# -----------------------------
+# NEU: DIN-konforme Dimensionierung (Beispiel 5.1)
+# -----------------------------
+def dimension_ventilation_system(df, qv_target):
+    """
+    Ventilatorgestütztes System nach DIN:
+    Abluft wird auf qv skaliert
+    Zuluft = Abluft
+    """
 
+    df = df.copy()
+
+    ab = df["Abluft (m³/h)"].sum()
+
+    if ab == 0:
+        return df, 0, 0
+
+    factor = qv_target / ab
+
+    df["Abluft (m³/h)"] = df["Abluft (m³/h)"] * factor
+
+    # Zuluft gleichsetzen
+    df["Zuluft (m³/h)"] = df["Abluft (m³/h)"]
+
+    return df, round(qv_target), round(qv_target)
+
+
+def balance_ventilation_system(df):
     df = df.copy()
 
     zu = df["Zuluft (m³/h)"].sum()
