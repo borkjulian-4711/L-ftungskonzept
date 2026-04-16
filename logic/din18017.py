@@ -1,18 +1,40 @@
-def get_abluft(room_type, category):
+def get_din18017_flow(category):
 
-    base = {
-        "Bad": 40,
-        "Duschraum": 40,
-        "WC": 25,
-        "Küche": 60,
-        "Hauswirtschaftsraum": 30
-    }.get(room_type, 0)
+    mapping = {
+        "R-ZD": 40,
+        "R-BD": 30,
+        "R-PN": 60,
+        "R-PD": 45
+    }
 
-    factor = {
-        "R-ZD": 1.0,
-        "R-BD": 0.8,
-        "R-PN": 1.2,
-        "R-PD": 1.0
-    }.get(category, 1.0)
+    return mapping.get(category, 0)
 
-    return base * factor
+
+def apply_din18017(df):
+
+    df = df.copy()
+
+    flows = []
+
+    for _, row in df.iterrows():
+
+        if row.get("Innenliegend"):
+
+            cat = str(row.get("DIN 18017 Kategorie", "")).split(" ")[0]
+            flow = get_din18017_flow(cat)
+
+            flows.append(flow)
+
+        else:
+            flows.append(row.get("Volumenstrom (m³/h)", 0))
+
+    df["Volumenstrom (m³/h)"] = flows
+
+    return df
+
+
+def check_moisture_protection(q_req, q_ab):
+
+    if q_ab >= q_req:
+        return True
+    return False
