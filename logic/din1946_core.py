@@ -2,7 +2,7 @@
 
 def calculate_qv_ges(ANE, level="FL"):
     """
-    DIN 1946-6: Luftvolumenstrom je Lüftungsstufe
+    DIN 1946-6 Luftvolumenstrom je Lüftungsstufe
     """
 
     h = 2.5
@@ -44,17 +44,12 @@ def distribute_airflows(df_rooms, qv_total):
 
     total_f = df[df["Typ"] == "Zuluft"]["fR,zu"].sum()
 
-    zuluft = []
+    df["Zuluft (m³/h)"] = 0
 
-    for _, row in df.iterrows():
-        if row["Typ"] == "Zuluft" and total_f > 0:
-            q = round(qv_total * row["fR,zu"] / total_f)
-        else:
-            q = 0
-
-        zuluft.append(q)
-
-    df["Zuluft (m³/h)"] = zuluft
+    if total_f > 0:
+        for i, row in df.iterrows():
+            if row["Typ"] == "Zuluft":
+                df.loc[i, "Zuluft (m³/h)"] = round(qv_total * row["fR,zu"] / total_f)
 
     return df
 
@@ -68,15 +63,13 @@ def apply_exhaust_values(df):
         "WC": 30
     }
 
-    ab = []
+    df["Abluft (m³/h)"] = 0
 
-    for _, row in df.iterrows():
+    for i, row in df.iterrows():
         if row["Typ"] == "Abluft":
-            ab.append(mapping.get(row["Kategorie (DIN 1946-6)"], 30))
-        else:
-            ab.append(0)
-
-    df["Abluft (m³/h)"] = ab
+            df.loc[i, "Abluft (m³/h)"] = mapping.get(
+                row["Kategorie (DIN 1946-6)"], 30
+            )
 
     return df
 
@@ -89,14 +82,9 @@ def balance_system(df):
 
 
 # -----------------------------
-# NEU: DIN-konforme Dimensionierung (Beispiel 5.1)
+# Ventilatorgestützt (DIN 5.x)
 # -----------------------------
 def dimension_ventilation_system(df, qv_target):
-    """
-    Ventilatorgestütztes System nach DIN:
-    Abluft wird auf qv skaliert
-    Zuluft = Abluft
-    """
 
     df = df.copy()
 
@@ -108,24 +96,6 @@ def dimension_ventilation_system(df, qv_target):
     factor = qv_target / ab
 
     df["Abluft (m³/h)"] = df["Abluft (m³/h)"] * factor
-
-    # Zuluft gleichsetzen
     df["Zuluft (m³/h)"] = df["Abluft (m³/h)"]
 
     return df, round(qv_target), round(qv_target)
-
-
-def balance_ventilation_system(df):
-    df = df.copy()
-
-    zu = df["Zuluft (m³/h)"].sum()
-    ab = df["Abluft (m³/h)"].sum()
-
-    if zu == 0:
-        return df, 0, ab
-
-    factor = ab / zu
-
-    df["Zuluft (m³/h)"] = df["Zuluft (m³/h)"] * factor
-
-    return df, round(df["Zuluft (m³/h)"].sum()), ab
