@@ -14,7 +14,7 @@ from logic.air_network import propagate_flows, calculate_uld
 # DIN 18017
 from logic.din18017 import apply_din18017
 
-# Infiltration (DIN-konform)
+# Infiltration (DIN)
 from logic.infiltration import get_ez_din, calculate_infiltration_din
 
 # ALD (DIN)
@@ -120,14 +120,13 @@ formblatt_b = evaluate_formblatt_b(
 
 
 # -----------------------------
-# GRUNDLAGEN
+# GRUNDLAGEN (DIN KONFORM)
 # -----------------------------
 st.header("Grunddaten")
 
 ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
-qv = core.calculate_qv_ges(ANE)
-levels = core.calculate_levels(qv)
+levels = core.calculate_levels(ANE)
 
 st.subheader("Lüftungsstufen")
 st.write(levels)
@@ -151,7 +150,7 @@ df_rooms = pd.DataFrame({
 
 df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
 
-# Berechnung
+# Luftmengen
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
 df_rooms = apply_din18017(df_rooms)
@@ -213,7 +212,6 @@ ald_result = calculate_ald_din(
 )
 
 if ald_result["anzahl"] > 0:
-
     st.warning("ALD erforderlich")
 
     st.write("Fehlende Luftmenge:", ald_result["q_required"], "m³/h")
