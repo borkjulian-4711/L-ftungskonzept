@@ -1,3 +1,10 @@
+# -----------------------------
+# IMPORT FIX (WICHTIG!)
+# -----------------------------
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 import streamlit as st
 import pandas as pd
 import tempfile
@@ -51,7 +58,7 @@ from export.pdf_generator import create_multi_pdf
 st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
 
 # -----------------------------
-# SYSTEM
+# SYSTEMWAHL
 # -----------------------------
 system = st.selectbox(
     "Lüftungssystem",
@@ -227,7 +234,6 @@ q_mech = df_rooms[df_rooms["Typ"] == "Abluft"]["Abluft (m³/h)"].sum()
 result = evaluate_system(q_mech, qv_selected, q_inf)
 
 st.header("Systembewertung")
-
 st.write("Status:", result["status"])
 
 # -----------------------------
@@ -237,7 +243,6 @@ st.header("ALD-Auslegung")
 
 if result["ald"]:
     q_needed = max(0, qv_selected - (q_mech + q_inf))
-
     ald = calculate_ald(q_needed)
 
     st.warning("ALD erforderlich")
