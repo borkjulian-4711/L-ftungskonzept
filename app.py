@@ -16,6 +16,7 @@ from logic.system_logic import evaluate_system
 from logic.text_generator import generate_concept_text
 from logic.validation import validate_din
 from logic.correction_engine import generate_corrections
+from logic.auto_fix import auto_fix_system
 
 from export.pdf_generator import create_multi_pdf
 
@@ -67,33 +68,11 @@ df_rooms = pd.DataFrame({
     "Typ": ["Zuluft", "Zuluft", "Abluft"],
     "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
     "Innenliegend": [False, False, True],
-    "DIN 18017 Kategorie": ["", "", "R-ZD"],
     "Überströmt nach": ["Flur", "Flur", ""]
 })
 
-typ_options = ["Zuluft", "Überström", "Abluft"]
+df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
 
-din_options = [
-    "Wohnzimmer", "Schlafzimmer", "Kinderzimmer",
-    "Arbeitszimmer", "Küche", "Bad", "WC"
-]
-
-din18017_options = ["", "R-ZD", "R-BD", "R-PN", "R-PD"]
-
-raumliste = df_rooms["Raum"].tolist()
-
-df_rooms = st.data_editor(
-    df_rooms,
-    num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-        "Typ": st.column_config.SelectboxColumn(options=typ_options),
-        "Kategorie (DIN 1946-6)": st.column_config.SelectboxColumn(options=din_options),
-        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(options=din18017_options),
-        "Innenliegend": st.column_config.CheckboxColumn(),
-        "Überströmt nach": st.column_config.SelectboxColumn(options=[""] + raumliste)
-    }
-)
 
 # -----------------------------
 # BERECHNUNG
@@ -108,7 +87,7 @@ st.dataframe(df_rooms)
 # INFILTRATION
 # -----------------------------
 wind = st.selectbox("Wind", ["windschwach", "windstark"])
-Aenv = st.number_input("Hüllfläche Aenv", 10.0, 500.0, 200.0)
+Aenv = st.number_input("Aenv", 10.0, 500.0, 200.0)
 luftdicht = st.checkbox("luftdicht")
 
 ez = get_ez_din("EFH", wind, luftdicht)
@@ -116,40 +95,10 @@ q_inf = calculate_infiltration_din(Aenv, ez)
 
 
 # -----------------------------
-# SCHACHT
-# -----------------------------
-shaft = st.checkbox("Schachtlüftung")
-q_shaft = calculate_shaft_flow() if shaft else 0
-
-
-# -----------------------------
-# SYSTEMLOGIK
+# SYSTEM
 # -----------------------------
 q_mech = df_rooms["Abluft (m³/h)"].sum()
-
-if system == "freie Lüftung":
-    q_supply = q_inf + q_shaft
-
-elif system == "ventilatorgestützt":
-    df_rooms, zu, ab = core.dimension_ventilation_system(df_rooms, qv_selected)
-    q_supply = zu
-
-elif system == "kombiniert":
-    q_supply = q_mech + q_inf + q_shaft
-
-
-# -----------------------------
-# ALD
-# -----------------------------
-ald = calculate_ald_din(qv_selected, q_supply, wind)
-st.write("ALD:", ald)
-
-
-# -----------------------------
-# SYSTEMBEWERTUNG
-# -----------------------------
-res = evaluate_system(q_mech, qv_selected, q_supply)
-st.write("Status:", res["status"])
+q_supply = q_mech + q_inf
 
 
 # -----------------------------
@@ -164,23 +113,33 @@ errors, warnings = validate_din(
 
 st.header("DIN-Prüfung")
 
-if errors:
-    for e in errors:
-        st.error(e)
+for e in errors:
+    st.error(e)
 
-if warnings:
-    for w in warnings:
-        st.warning(w)
+for w in warnings:
+    st.warning(w)
 
-if not errors:
-    st.success("DIN-Anforderungen erfüllt")
+
+# -----------------------------
+# AUTO-FIX BUTTON
+# -----------------------------
+st.header("Auto-Fix")
+
+if st.button("🔧 System automatisch korrigieren"):
+
+    df_rooms, msg = auto_fix_system(
+        df_rooms,
+        qv_selected,
+        q_supply
+    )
+
+    st.success(msg)
+    st.dataframe(df_rooms)
 
 
 # -----------------------------
 # KORREKTUREN
 # -----------------------------
-st.header("Korrekturvorschläge")
-
 corrections = generate_corrections(
     df_rooms,
     errors,
@@ -188,11 +147,8 @@ corrections = generate_corrections(
     q_supply
 )
 
-if corrections:
-    for c in corrections:
-        st.info(c)
-else:
-    st.success("Keine Korrekturen erforderlich")
+for c in corrections:
+    st.info(c)
 
 
 # -----------------------------
@@ -203,40 +159,36 @@ summary = {
     "zu": q_supply,
     "ab": q_mech,
     "inf": q_inf,
-    "status": res["status"]
+    "status": "OK" if not errors else "NICHT OK"
 }
 
 report = generate_concept_text(
     {
         "levels": levels,
-        "result": res,
         "summary": summary
     },
-    project_data,
-    mode="behördlich"
+    project_data
 )
 
-st.text_area("Prüfbericht", report, height=400)
+st.text_area("Prüfbericht", report)
 
 
 # -----------------------------
-# PDF EXPORT
+# PDF
 # -----------------------------
-if st.button("📄 PDF Export"):
+if st.button("PDF Export"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
     create_multi_pdf(tmp.name, {
         "WE1": {
             "meta": project_data,
-            "firma": FIRMA,
             "res": {
                 "df_rooms": df_rooms,
                 "formblatt_e": report,
                 "validation": {
                     "errors": errors,
-                    "warnings": warnings,
-                    "summary": summary
+                    "warnings": warnings
                 },
                 "corrections": corrections
             }
@@ -245,8 +197,8 @@ if st.button("📄 PDF Export"):
 
     with open(tmp.name, "rb") as f:
         st.download_button(
-            label="Download PDF",
-            data=f,
+            "Download PDF",
+            f,
             file_name="Lueftungskonzept.pdf",
             mime="application/pdf"
         )
