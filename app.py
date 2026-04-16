@@ -7,6 +7,7 @@ from logic.ventilation_levels import calculate_ventilation_levels
 from logic.formblatt_a import evaluate_formblatt_a
 from logic.formblatt_b import evaluate_formblatt_b
 from logic.formblatt_c import evaluate_formblatt_c
+from logic.formblatt_d import evaluate_formblatt_d
 from export.pdf_generator import create_multi_pdf
 
 
@@ -82,9 +83,6 @@ fWS = st.selectbox("fWS", [0.2, 0.3, 0.4])
 
 levels = calculate_ventilation_levels(ANE, fWS)
 
-st.subheader("Lüftungsstufen")
-st.write(levels)
-
 # -----------------------------
 # RAUMDATEN
 # -----------------------------
@@ -104,10 +102,18 @@ q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
 # -----------------------------
 formblatt_c = evaluate_formblatt_c(levels, q_ab)
 
-st.header("Formblatt C – Nachweis")
+# -----------------------------
+# FORMBLATT D
+# -----------------------------
+formblatt_d = evaluate_formblatt_d(
+    formblatt_a,
+    formblatt_b,
+    formblatt_c
+)
 
-for k, v in formblatt_c.items():
-    st.write(k, v)
+st.header("Formblatt D – Maßnahmen")
+
+st.write(formblatt_d)
 
 # -----------------------------
 # SPEICHERN
@@ -117,6 +123,7 @@ st.session_state["project"][flat] = {
         "formblatt_a": formblatt_a,
         "formblatt_b": formblatt_b,
         "formblatt_c": formblatt_c,
+        "formblatt_d": formblatt_d,
         "levels": levels
     }
 }
