@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import tempfile
 
-# DIN Kernlogik
+# DIN Kern
 from logic.din1946_core import (
     calculate_qv_ges,
     calculate_levels,
     distribute_airflows,
     apply_exhaust_values,
-    balance_system
+    balance_system,
+    balance_ventilation_system
 )
 
 # Luftnetz
@@ -26,6 +27,9 @@ from logic.infiltration import (
 
 # ALD
 from logic.ald import calculate_ald
+
+# Systembewertung
+from logic.system_logic import evaluate_system
 
 # Formblätter
 from logic.formblatt_a import evaluate_formblatt_a
@@ -45,6 +49,14 @@ from export.pdf_generator import create_multi_pdf
 # TITLE
 # -----------------------------
 st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
+
+# -----------------------------
+# SYSTEM
+# -----------------------------
+system = st.selectbox(
+    "Lüftungssystem",
+    ["freie Lüftung", "ventilatorgestützt", "kombiniert"]
+)
 
 # -----------------------------
 # FORMBLATT A
@@ -171,7 +183,10 @@ for (a, b), d in uld.items():
 # -----------------------------
 # BILANZ
 # -----------------------------
-zu, ab, diff = balance_system(df_rooms)
+if system == "ventilatorgestützt":
+    df_rooms, zu, ab = balance_ventilation_system(df_rooms)
+else:
+    zu, ab, _ = balance_system(df_rooms)
 
 # -----------------------------
 # INFILTRATION
@@ -187,7 +202,14 @@ q_inf = calculate_infiltration(Aenv, ez)
 # -----------------------------
 # GESAMTBILANZ
 # -----------------------------
-q_eff = calculate_effective_supply(zu, q_inf)
+if system == "freie Lüftung":
+    q_eff = calculate_effective_supply(zu, q_inf)
+elif system == "kombiniert":
+    q_eff = zu + q_inf
+else:
+    q_eff = zu
+
+delta = q_eff - ab
 
 st.subheader("Gesamtbilanz")
 
@@ -195,25 +217,31 @@ st.write("Zuluft:", zu)
 st.write("Infiltration:", q_inf)
 st.write("Effektiv:", q_eff)
 st.write("Abluft:", ab)
-
-delta = q_eff - ab
-
 st.write("Differenz:", delta)
 
 # -----------------------------
-# ALD AUSLEGUNG
+# SYSTEMBEWERTUNG
+# -----------------------------
+q_mech = df_rooms[df_rooms["Typ"] == "Abluft"]["Abluft (m³/h)"].sum()
+
+result = evaluate_system(q_mech, qv_selected, q_inf)
+
+st.header("Systembewertung")
+
+st.write("Status:", result["status"])
+
+# -----------------------------
+# ALD
 # -----------------------------
 st.header("ALD-Auslegung")
 
-if delta < 0:
-    q_needed = abs(delta)
+if result["ald"]:
+    q_needed = max(0, qv_selected - (q_mech + q_inf))
 
     ald = calculate_ald(q_needed)
 
-    st.write("Zusätzlicher Bedarf:", q_needed)
-    st.write("Anzahl ALD:", ald["anzahl"])
-    st.write("Leistung gesamt:", ald["gesamt"])
-
+    st.warning("ALD erforderlich")
+    st.write("Anzahl:", ald["anzahl"])
 else:
     st.success("Keine ALDs erforderlich")
 
