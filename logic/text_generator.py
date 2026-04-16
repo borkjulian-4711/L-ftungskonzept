@@ -1,97 +1,98 @@
-def generate_concept_text(data, project, mode="lang"):
+# logic/text_generator.py
+
+def generate_concept_text(data, project, mode="behördlich"):
+    """
+    Behördlicher Prüfbericht nach DIN 1946-6
+    """
 
     levels = data.get("levels", {})
-    d = data.get("formblatt_d", {})
+    result = data.get("result", {})
+    summary = data.get("summary", {})
 
-    # -----------------------------
-    # 1. EINLEITUNG (immer gleich)
-    # -----------------------------
-    intro = f"""
-1. Einleitung
+    qv = summary.get("qv", 0)
+    q_supply = summary.get("zu", 0)
+    q_ab = summary.get("ab", 0)
+    q_inf = summary.get("inf", 0)
+    status = summary.get("status", "")
 
-Für das nachfolgend beschriebene Bauvorhaben wurde ein Lüftungskonzept gemäß
-DIN 1946-6 „Lüftung von Wohnungen“ erstellt.
+    text = ""
 
-Zusätzlich wurden, sofern erforderlich, innenliegende Räume gemäß DIN 18017-3
-„Lüftung von Bädern und Toilettenräumen ohne Außenfenster“ berücksichtigt.
-"""
+    # -------------------------------------------------
+    # 1. EINLEITUNG
+    # -------------------------------------------------
+    text += "1. Einleitung\n"
+    text += (
+        "Für das nachfolgend beschriebene Bauvorhaben wurde ein Lüftungskonzept "
+        "gemäß DIN 1946-6 „Lüftung von Wohnungen“ erstellt. "
+        "Ziel ist die Sicherstellung des notwendigen Luftwechsels zum Feuchteschutz "
+        "sowie zur hygienischen Raumluftqualität.\n\n"
+    )
 
-    # -----------------------------
-    # 2. PROJEKTBESCHREIBUNG
-    # -----------------------------
-    projekt = f"""
-2. Projektbeschreibung
+    # -------------------------------------------------
+    # 2. PROJEKT
+    # -------------------------------------------------
+    text += "2. Projektbeschreibung\n"
+    text += f"Projekt: {project.get('projekt','')}\n"
+    text += f"Adresse: {project.get('adresse','')}\n"
+    text += f"Bearbeiter: {project.get('bearbeiter','')}\n\n"
 
-Projekt: {project.get("projekt", "-")}
-Adresse: {project.get("adresse", "-")}
-Bearbeiter: {project.get("bearbeiter", "-")}
-Datum: {project.get("datum", "-")}
-"""
+    # -------------------------------------------------
+    # 3. BERECHNUNGSGRUNDLAGEN
+    # -------------------------------------------------
+    text += "3. Berechnungsgrundlagen\n"
+    text += (
+        f"Die Auslegung erfolgt auf Basis der Lüftungsstufe. "
+        f"Der erforderliche Luftvolumenstrom beträgt {qv} m³/h.\n"
+    )
+    text += (
+        f"Die Infiltration wurde mit {q_inf} m³/h berücksichtigt.\n\n"
+    )
 
-    # -----------------------------
-    # 3. GRUNDLAGEN
-    # -----------------------------
-    grundlagen = f"""
-3. Grundlagen
+    # -------------------------------------------------
+    # 4. ERGEBNISSE
+    # -------------------------------------------------
+    text += "4. Ergebnisse\n"
+    text += f"Zuluft gesamt: {q_supply} m³/h\n"
+    text += f"Abluft gesamt: {q_ab} m³/h\n\n"
 
-Die Berechnung basiert auf den Vorgaben der DIN 1946-6 unter Berücksichtigung
-der Nutzungseinheit sowie der vorgesehenen Nutzung.
+    # -------------------------------------------------
+    # 5. BEWERTUNG
+    # -------------------------------------------------
+    text += "5. Bewertung\n"
 
-Die maßgebliche Lüftungsstufe ergibt sich zu:
-Nennlüftung: {levels.get("NL", "-")} m³/h
-"""
+    if q_supply >= qv:
+        text += (
+            "Der erforderliche Luftvolumenstrom wird erreicht. "
+            "Die Anforderungen an den Feuchteschutz nach DIN 1946-6 sind erfüllt.\n\n"
+        )
+    else:
+        text += (
+            "Der erforderliche Luftvolumenstrom wird nicht vollständig erreicht. "
+            "Zusätzliche lüftungstechnische Maßnahmen sind erforderlich.\n\n"
+        )
 
-    # -----------------------------
-    # 4. KONZEPT (variabel)
-    # -----------------------------
-    if mode == "kurz":
-        konzept = f"""
-4. Lüftungskonzept
+    # -------------------------------------------------
+    # 6. MASSNAHMEN
+    # -------------------------------------------------
+    text += "6. Maßnahmen\n"
+    text += f"Systembewertung: {status}\n"
 
-Die Luftführung erfolgt von Zuluft- zu Ablufträumen.
-{d.get("massnahme", "-")}
-"""
+    if q_supply < qv:
+        text += (
+            "Zur Sicherstellung des Feuchteschutzes sind zusätzliche "
+            "Außenluftdurchlässe (ALD) vorzusehen.\n"
+        )
+    else:
+        text += "Es sind keine weiteren Maßnahmen erforderlich.\n"
 
-    elif mode == "behördlich":
-        konzept = f"""
-4. Lüftungskonzept
+    text += "\n"
 
-Die Auslegung des Lüftungskonzeptes erfolgt gemäß den Anforderungen
-der DIN 1946-6.
+    # -------------------------------------------------
+    # 7. ABSCHLUSS
+    # -------------------------------------------------
+    text += (
+        "Das Lüftungskonzept entspricht den Anforderungen der DIN 1946-6 "
+        "und ist zur Vorlage bei Behörden geeignet.\n"
+    )
 
-Die Luftvolumenströme wurden entsprechend der Nutzung und Raumfunktion
-dimensioniert. Die Luftführung erfolgt über definierte Überströmwege.
-
-Innenliegende Räume werden gemäß DIN 18017-3 ventilatorgestützt entlüftet.
-
-Maßnahme:
-{d.get("massnahme", "-")}
-"""
-
-    else:  # lang
-        konzept = f"""
-4. Lüftungskonzept
-
-Die erforderlichen Luftvolumenströme wurden auf Grundlage der
-Gebäudenutzung und Raumaufteilung ermittelt.
-
-Die Luftführung erfolgt von Zuluft- in Ablufträume über Überströmöffnungen.
-
-Innenliegende Räume werden gemäß DIN 18017-3 mechanisch entlüftet.
-
-Die gewählte Maßnahme lautet:
-{d.get("massnahme", "-")}
-"""
-
-    # -----------------------------
-    # 5. ERGEBNIS
-    # -----------------------------
-    ergebnis = f"""
-5. Ergebnis
-
-Die Anforderungen an die Feuchteschutzlüftung werden eingehalten.
-
-Das Lüftungskonzept entspricht den Anforderungen der DIN 1946-6.
-"""
-
-    return intro + projekt + grundlagen + konzept + ergebnis
+    return text
