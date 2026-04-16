@@ -1,104 +1,163 @@
-from reportlab.platypus import *
+# export/pdf_generator.py
+
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer,
+    Table, TableStyle, PageBreak
+)
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.platypus.tableofcontents import TableOfContents
-import os
 
 styles = getSampleStyleSheet()
 
 
-def create_multi_pdf(path, data):
+# -----------------------------
+# FORMBLATT C (DIN-NAH)
+# -----------------------------
+def add_formblatt_c(story, df_rooms):
 
-    doc = SimpleDocTemplate(path)
+    story.append(Paragraph("Formblatt C – Raumweise Luftvolumenströme", styles["Heading2"]))
+    story.append(Spacer(1, 10))
+
+    # -----------------------------
+    # Tabellenkopf
+    # -----------------------------
+    table_data = [[
+        "Raum",
+        "Nutzung",
+        "Fläche [m²]",
+        "Zuluft [m³/h]",
+        "Abluft [m³/h]",
+        "Überströmt nach"
+    ]]
+
+    # -----------------------------
+    # Daten
+    # -----------------------------
+    for _, row in df_rooms.iterrows():
+        table_data.append([
+            str(row.get("Raum", "")),
+            str(row.get("Kategorie (DIN 1946-6)", "")),
+            str(row.get("Fläche", "")),
+            str(int(row.get("Zuluft (m³/h)", 0))),
+            str(int(row.get("Abluft (m³/h)", 0))),
+            str(row.get("Überströmt nach", ""))
+        ])
+
+    # -----------------------------
+    # Summenzeile
+    # -----------------------------
+    total_zu = int(df_rooms["Zuluft (m³/h)"].sum())
+    total_ab = int(df_rooms["Abluft (m³/h)"].sum())
+
+    table_data.append([
+        "Summe",
+        "",
+        "",
+        str(total_zu),
+        str(total_ab),
+        ""
+    ])
+
+    # -----------------------------
+    # Tabelle mit Spaltenbreiten
+    # -----------------------------
+    table = Table(
+        table_data,
+        colWidths=[
+            4 * cm,   # Raum
+            4 * cm,   # Nutzung
+            2.5 * cm, # Fläche
+            3 * cm,   # Zuluft
+            3 * cm,   # Abluft
+            3.5 * cm  # Überströmung
+        ],
+        repeatRows=1
+    )
+
+    # -----------------------------
+    # Styling (DIN-ähnlich)
+    # -----------------------------
+    table.setStyle(TableStyle([
+
+        # Gitter
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+
+        # Kopfzeile
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+
+        # Zahlen rechtsbündig
+        ("ALIGN", (3, 1), (4, -1), "RIGHT"),
+
+        # Summenzeile
+        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+
+        # Vertikale Ausrichtung
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+
+        # Padding
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+
+    story.append(table)
+    story.append(PageBreak())
+
+
+# -----------------------------
+# HAUPTFUNKTION PDF
+# -----------------------------
+def create_multi_pdf(filename, data):
+
+    doc = SimpleDocTemplate(filename, pagesize=A4)
+
     story = []
 
     for name, content in data.items():
 
-        firma = content["firma"]
-        meta = content["meta"]
-        res = content["res"]
+        meta = content.get("meta", {})
+        firma = content.get("firma", {})
+        res = content.get("res", {})
 
         # -----------------------------
-        # LOGO
+        # Titel
         # -----------------------------
-        if os.path.exists(firma["logo_path"]):
-            story.append(Image(firma["logo_path"], width=5*cm, height=2.5*cm))
-
-        story.append(Spacer(1, 20))
+        story.append(Paragraph("Lüftungskonzept DIN 1946-6", styles["Title"]))
+        story.append(Spacer(1, 12))
 
         # -----------------------------
-        # DECKBLATT
+        # Projekt
         # -----------------------------
-        story.append(Paragraph("LÜFTUNGSKONZEPT", styles["Title"]))
-        story.append(Spacer(1, 20))
-
-        story.append(Paragraph(f"Projekt: {meta['projekt']}", styles["Normal"]))
-        story.append(Paragraph(f"Adresse: {meta['adresse']}", styles["Normal"]))
-        story.append(Paragraph(f"Bearbeiter: {meta['bearbeiter']}", styles["Normal"]))
-        story.append(Paragraph(f"Datum: {meta['datum']}", styles["Normal"]))
-
-        story.append(PageBreak())
+        story.append(Paragraph(f"Projekt: {meta.get('projekt', '')}", styles["Normal"]))
+        story.append(Paragraph(f"Adresse: {meta.get('adresse', '')}", styles["Normal"]))
+        story.append(Paragraph(f"Bearbeiter: {meta.get('bearbeiter', '')}", styles["Normal"]))
+        story.append(Spacer(1, 12))
 
         # -----------------------------
-        # INHALTSVERZEICHNIS
+        # Firma
         # -----------------------------
-        toc = TableOfContents()
-        story.append(Paragraph("Inhaltsverzeichnis", styles["Heading1"]))
-        story.append(toc)
-        story.append(PageBreak())
+        story.append(Paragraph(firma.get("firma", ""), styles["Normal"]))
+        story.append(Paragraph(firma.get("anschrift", ""), styles["Normal"]))
+        story.append(Spacer(1, 12))
 
         # -----------------------------
-        # TEXT
+        # Konzepttext
         # -----------------------------
-        story.append(Paragraph("Lüftungskonzept", styles["Heading1"]))
-        story.append(Paragraph(res["formblatt_e"], styles["Normal"]))
-        story.append(PageBreak())
-
-        # -----------------------------
-        # UNTERSCHRIFT
-        # -----------------------------
-        story.append(Spacer(1, 40))
-        story.append(Paragraph("Unterschrift / Stempel", styles["Normal"]))
-        story.append(Spacer(1, 40))
-        story.append(Paragraph("__________________________", styles["Normal"]))
-        story.append(PageBreak())
+        if "formblatt_e" in res:
+            story.append(Paragraph("Konzept", styles["Heading2"]))
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(res["formblatt_e"], styles["Normal"]))
+            story.append(PageBreak())
 
         # -----------------------------
         # FORMBLATT C
         # -----------------------------
-        table_data = [["Raum", "Zuluft", "Abluft"]]
-
-        for _, r in res["df_rooms"].iterrows():
-            table_data.append([
-                r["Raum"],
-                r.get("Zuluft (m³/h)", 0),
-                r.get("Abluft (m³/h)", 0)
-            ])
-
-        table = Table(table_data)
-        table.setStyle([("GRID", (0,0), (-1,-1), 0.5, colors.black)])
-
-        story.append(Paragraph("Formblatt C", styles["Heading2"]))
-        story.append(table)
-        story.append(PageBreak())
-
-        # -----------------------------
-        # FORMBLATT E
-        # -----------------------------
-        s = res["summary"]
-
-        table = Table([
-            ["Zuluft", s["zu"]],
-            ["Abluft", s["ab"]],
-            ["Infiltration", s["inf"]],
-            ["Differenz", s["diff"]],
-            ["Ergebnis", s["status"]],
-        ])
-
-        table.setStyle([("GRID", (0,0), (-1,-1), 0.5, colors.black)])
-
-        story.append(Paragraph("Formblatt E", styles["Heading2"]))
-        story.append(table)
+        if "df_rooms" in res:
+            add_formblatt_c(story, res["df_rooms"])
 
     doc.build(story)
