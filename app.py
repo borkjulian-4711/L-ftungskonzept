@@ -14,10 +14,14 @@ from logic.air_network import propagate_flows, calculate_uld
 # DIN 18017
 from logic.din18017 import apply_din18017
 
-# Infiltration (DIN)
-from logic.infiltration import get_ez_din, calculate_infiltration_din
+# Infiltration + Schacht
+from logic.infiltration import (
+    get_ez_din,
+    calculate_infiltration_din,
+    calculate_shaft_flow
+)
 
-# ALD (DIN)
+# ALD
 from logic.ald import calculate_ald_din
 
 # Systembewertung
@@ -37,9 +41,6 @@ from logic.validation import validate_din
 from export.pdf_generator import create_multi_pdf
 
 
-# -----------------------------
-# TITLE
-# -----------------------------
 st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
 
 
@@ -63,18 +64,16 @@ firm_data = {
 # -----------------------------
 # PROJEKT
 # -----------------------------
-st.header("Projektangaben")
+st.header("Projekt")
 
-projekt_name = st.text_input("Projekt")
-adresse = st.text_input("Projektadresse")
+projekt = st.text_input("Projektname")
+adresse = st.text_input("Adresse")
 bearbeiter = st.text_input("Bearbeiter")
-datum = st.date_input("Datum")
 
 project_data = {
-    "projekt": projekt_name,
+    "projekt": projekt,
     "adresse": adresse,
-    "bearbeiter": bearbeiter,
-    "datum": str(datum)
+    "bearbeiter": bearbeiter
 }
 
 
@@ -95,7 +94,7 @@ st.header("Formblatt A")
 neubau = st.checkbox("Neubau")
 sanierung = st.checkbox("Sanierung")
 fensteranteil = st.slider("Fensteranteil (%)", 0, 100, 50) / 100
-luftdicht = st.checkbox("Gebäude luftdicht (n50 < 1.5)")
+luftdicht = st.checkbox("Gebäude luftdicht")
 
 formblatt_a = evaluate_formblatt_a(
     neubau, sanierung, fensteranteil, luftdicht
@@ -109,18 +108,16 @@ st.header("Formblatt B")
 
 gebaeudetyp = st.selectbox("Gebäudetyp", ["EFH", "DHH", "MFH", "Wohnung"])
 baujahr = st.number_input("Baujahr", 1900, 2025, 2000)
-
 personen = st.number_input("Personen", 1, 10, 2)
-nutzung = st.selectbox("Nutzung", ["normal", "reduziert", "hoch"])
 
 formblatt_b = evaluate_formblatt_b(
     gebaeudetyp, baujahr, 1,
-    personen, nutzung, True, "mittel"
+    personen, "normal", True, "mittel"
 )
 
 
 # -----------------------------
-# GRUNDLAGEN (DIN KONFORM)
+# GRUNDLAGEN
 # -----------------------------
 st.header("Grunddaten")
 
@@ -128,17 +125,16 @@ ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
 levels = core.calculate_levels(ANE)
 
-st.subheader("Lüftungsstufen")
-st.write(levels)
-
-level = st.selectbox("Auslegungsstufe", list(levels.keys()))
+level = st.selectbox("Lüftungsstufe", list(levels.keys()))
 qv_selected = levels[level]
+
+st.write("Volumenstrom:", qv_selected, "m³/h")
 
 
 # -----------------------------
 # RÄUME
 # -----------------------------
-st.header("Räume & Luftführung")
+st.header("Räume")
 
 df_rooms = pd.DataFrame({
     "Raum": ["Wohnzimmer", "Flur", "Bad"],
@@ -150,12 +146,10 @@ df_rooms = pd.DataFrame({
 
 df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
 
-# Luftmengen
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
 df_rooms = apply_din18017(df_rooms)
 
-st.subheader("Raumweise Luftmengen")
 st.dataframe(df_rooms)
 
 
@@ -166,118 +160,87 @@ flows = propagate_flows(df_rooms)
 
 st.subheader("Luftnetz")
 for r, f in flows.items():
-    st.write(f"{r}: {round(f,1)} m³/h")
+    st.write(r, ":", round(f, 1))
 
 
 # -----------------------------
-# ÜLD
-# -----------------------------
-uld = calculate_uld(flows, df_rooms)
-
-st.subheader("Überströmöffnungen")
-for (a, b), d in uld.items():
-    st.write(f"{a} → {b}: {d['Anzahl']} Stück ({d['Volumenstrom']} m³/h)")
-
-
-# -----------------------------
-# BILANZ
-# -----------------------------
-zu, ab, _ = core.balance_system(df_rooms)
-
-
-# -----------------------------
-# INFILTRATION (DIN)
+# INFILTRATION
 # -----------------------------
 st.header("Infiltration")
 
-wind = st.selectbox("Windgebiet", ["windschwach", "windstark"])
-Aenv = st.number_input("Hüllfläche Aenv (m²)", 10.0, 500.0, 200.0)
+wind = st.selectbox("Wind", ["windschwach", "windstark"])
+Aenv = st.number_input("Hüllfläche", 10.0, 500.0, 200.0)
 
 ez = get_ez_din(gebaeudetyp, wind, luftdicht)
 q_inf = calculate_infiltration_din(Aenv, ez)
 
 st.write("ez:", ez)
-st.write("Infiltration:", q_inf, "m³/h")
+st.write("Infiltration:", q_inf)
 
 
 # -----------------------------
-# ALD (DIN)
+# SCHACHTLÜFTUNG
 # -----------------------------
-st.header("ALD-Auslegung (DIN)")
+st.header("Schachtlüftung")
+
+shaft_active = st.checkbox("Schacht vorhanden")
+
+if shaft_active:
+    height = st.number_input("Höhe (m)", 2.0, 20.0, 8.0)
+    delta_t = st.number_input("ΔT (K)", 1.0, 30.0, 10.0)
+    area = st.number_input("Querschnitt (m²)", 0.01, 0.1, 0.02)
+
+    q_shaft = calculate_shaft_flow(height, delta_t, area)
+else:
+    q_shaft = 0
+
+st.write("Schachtvolumenstrom:", q_shaft)
+
+
+# -----------------------------
+# ALD
+# -----------------------------
+st.header("ALD")
+
+q_total_passive = q_inf + q_shaft
 
 ald_result = calculate_ald_din(
     qv_selected,
-    q_inf,
+    q_total_passive,
     wind
 )
 
-if ald_result["anzahl"] > 0:
-    st.warning("ALD erforderlich")
-
-    st.write("Fehlende Luftmenge:", ald_result["q_required"], "m³/h")
-    st.write("Δp:", ald_result["delta_p"], "Pa")
-    st.write("Volumenstrom je ALD:", ald_result["q_per_ald"], "m³/h")
-    st.write("Anzahl ALD:", ald_result["anzahl"])
-
-else:
-    st.success("Keine ALDs erforderlich")
+st.write(ald_result)
 
 
 # -----------------------------
-# SYSTEMBEWERTUNG
+# SYSTEM
 # -----------------------------
-result = evaluate_system(ab, qv_selected, q_inf)
+result = evaluate_system(
+    df_rooms["Abluft (m³/h)"].sum(),
+    qv_selected,
+    q_total_passive
+)
 
-st.header("Systembewertung")
-st.write("Status:", result["status"])
+st.write("System:", result["status"])
 
 
 # -----------------------------
 # TEXT
 # -----------------------------
-st.header("Konzept")
-
-mode = st.selectbox("Textstil", ["kurz", "lang", "behördlich"])
-
-formblatt_e = generate_concept_text(
-    {"levels": levels, "formblatt_d": {"massnahme": result["status"]}},
+text = generate_concept_text(
+    {"levels": levels},
     project_data,
-    mode
+    "lang"
 )
 
-st.text_area("Text", formblatt_e, height=300)
+st.text_area("Konzept", text)
 
 
 # -----------------------------
-# SUMMARY
+# PDF
 # -----------------------------
-summary = {
-    "zu": zu,
-    "ab": ab,
-    "inf": q_inf,
-    "diff": zu + q_inf - ab,
-    "status": result["status"]
-}
-
-
-# -----------------------------
-# VALIDIERUNG
-# -----------------------------
-errors, warnings = validate_din(df_rooms, flows, qv_selected, ab)
-
-if errors:
-    st.error(errors)
-
-if warnings:
-    st.warning(warnings)
-
-
-# -----------------------------
-# PDF EXPORT
-# -----------------------------
-st.header("Export")
-
-if st.button("📄 PDF Export"):
+if st.button("PDF"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
@@ -288,12 +251,18 @@ if st.button("📄 PDF Export"):
             "res": {
                 "formblatt_a": formblatt_a,
                 "formblatt_b": formblatt_b,
-                "formblatt_e": formblatt_e,
+                "formblatt_e": text,
                 "df_rooms": df_rooms,
-                "summary": summary
+                "summary": {
+                    "zu": df_rooms["Zuluft (m³/h)"].sum(),
+                    "ab": df_rooms["Abluft (m³/h)"].sum(),
+                    "inf": q_inf,
+                    "diff": q_total_passive,
+                    "status": result["status"]
+                }
             }
         }
     })
 
     with open(tmp.name, "rb") as f:
-        st.download_button("Download PDF", f)
+        st.download_button("Download", f)
