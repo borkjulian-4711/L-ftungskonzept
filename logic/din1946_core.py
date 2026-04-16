@@ -1,15 +1,36 @@
-def calculate_qv_ges(ANE, n=0.4):
+# logic/din1946_core.py
+
+def calculate_qv_ges(ANE, level="FL"):
+    """
+    DIN 1946-6: Luftvolumenstrom je Lüftungsstufe
+    """
+
     h = 2.5
     V = ANE * h
+
+    if level == "FL":      # Feuchteschutz
+        n = 0.3
+    elif level == "RL":    # Reduzierte Lüftung
+        n = 0.5
+    elif level == "NL":    # Nennlüftung
+        n = 0.7
+    elif level == "IL":    # Intensivlüftung
+        n = 1.0
+    else:
+        n = 0.5
+
     return round(V * n)
 
 
-def calculate_levels(qv):
+def calculate_levels(ANE):
+    """
+    Alle Lüftungsstufen berechnen
+    """
     return {
-        "FL": round(qv * 0.3),
-        "RL": round(qv * 0.5),
-        "NL": round(qv * 1.0),
-        "IL": round(qv * 1.3)
+        "FL": calculate_qv_ges(ANE, "FL"),
+        "RL": calculate_qv_ges(ANE, "RL"),
+        "NL": calculate_qv_ges(ANE, "NL"),
+        "IL": calculate_qv_ges(ANE, "IL"),
     }
 
 
@@ -87,4 +108,4 @@ def balance_ventilation_system(df):
 
     df["Zuluft (m³/h)"] = df["Zuluft (m³/h)"] * factor
 
-    return df, df["Zuluft (m³/h)"].sum(), ab
+    return df, round(df["Zuluft (m³/h)"].sum()), ab
