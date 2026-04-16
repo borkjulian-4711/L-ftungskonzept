@@ -1,136 +1,99 @@
-from reportlab.platypus import *
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
+)
 from reportlab.lib.styles import getSampleStyleSheet
-from datetime import datetime
-import os
+from reportlab.lib.units import cm
+from reportlab.pdfgen import canvas
 
 styles = getSampleStyleSheet()
-
-LOGO_PATH = "logo.png"
 
 
 # -----------------------------
 # HEADER / FOOTER
 # -----------------------------
-def draw_header_footer(canvas, doc):
+def add_header_footer(c: canvas.Canvas, doc, firma, meta):
 
-    width, height = A4
+    c.setFont("Helvetica", 8)
 
-    if os.path.exists(LOGO_PATH):
-        canvas.drawImage(LOGO_PATH, width - 120, height - 70, width=100)
+    # Kopfzeile
+    c.drawString(2*cm, 28*cm, firma.get("firma", ""))
+    c.drawRightString(19*cm, 28*cm, meta.get("projekt", ""))
 
-    canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(40, height - 40, "Lüftungskonzept DIN 1946-6")
-
-    canvas.setFont("Helvetica", 8)
-    canvas.drawString(40, height - 55,
-        f"Datum: {datetime.now().strftime('%d.%m.%Y')}")
-
-    canvas.drawRightString(width - 40, 20, f"Seite {doc.page}")
+    # Fußzeile
+    c.drawString(2*cm, 1.5*cm, firma.get("kontakt", ""))
+    c.drawRightString(19*cm, 1.5*cm, f"Seite {doc.page}")
 
 
 # -----------------------------
-# HELPER
+# DECKBLATT
 # -----------------------------
-def safe_get(res, key, default):
-    return res[key] if key in res else default
+def create_cover(story, firma, meta):
 
+    # Logo
+    if firma.get("logo"):
+        logo = firma["logo"]
+        with open("temp_logo.png", "wb") as f:
+            f.write(logo.read())
 
-def checkbox(value):
-    return "☑" if value else "☐"
+        story.append(Image("temp_logo.png", width=6*cm, height=3*cm))
 
+    story.append(Spacer(1, 40))
 
-def box_table(data):
-    return Table(data, style=[
-        ("GRID", (0,0), (-1,-1), 0.8, colors.black),
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-    ])
+    story.append(Paragraph("<b>LÜFTUNGSKONZEPT</b>", styles["Title"]))
+    story.append(Spacer(1, 20))
+
+    story.append(Paragraph("nach DIN 1946-6", styles["Heading2"]))
+    story.append(Spacer(1, 40))
+
+    story.append(Paragraph(f"<b>Projekt:</b> {meta.get('projekt','')}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Adresse:</b> {meta.get('adresse','')}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Bearbeiter:</b> {meta.get('bearbeiter','')}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Datum:</b> {meta.get('datum','')}", styles["Normal"]))
+
+    story.append(Spacer(1, 60))
+
+    story.append(Paragraph(firma.get("firma",""), styles["Normal"]))
+    story.append(Paragraph(firma.get("anschrift",""), styles["Normal"]))
+    story.append(Paragraph(firma.get("kontakt",""), styles["Normal"]))
+
+    story.append(PageBreak())
 
 
 # -----------------------------
-# PDF
+# HAUPT-PDF
 # -----------------------------
-def create_multi_pdf(file, project):
+def create_multi_pdf(path, data):
 
-    doc = SimpleDocTemplate(file, pagesize=A4)
-    elements = []
+    doc = SimpleDocTemplate(path)
+    story = []
 
-    for name, data in project.items():
+    for name, content in data.items():
 
-        res = data.get("res", {})
-
-        # -----------------------------
-        # FORM A (optional)
-        # -----------------------------
-        fb_a = safe_get(res, "formblatt_a", {
-            "erforderlich": False,
-            "begruendung": "-"
-        })
-
-        elements.append(Paragraph("Formblatt A", styles["Heading2"]))
-        elements.append(box_table([
-            ["Erforderlich", checkbox(fb_a["erforderlich"])],
-            ["Begründung", fb_a["begruendung"]],
-        ]))
-
-        elements.append(Spacer(1,10))
+        firma = content.get("firma", {})
+        meta = content.get("meta", {})
+        res = content.get("res", {})
 
         # -----------------------------
-        # FORM B
+        # DECKBLATT
         # -----------------------------
-        fb_b = safe_get(res, "formblatt_b", {})
-
-        elements.append(Paragraph("Formblatt B", styles["Heading2"]))
-
-        if fb_b:
-            elements.append(box_table([[k, str(v)] for k,v in fb_b.items()]))
-        else:
-            elements.append(Paragraph("Keine Daten", styles["Normal"]))
-
-        elements.append(Spacer(1,10))
+        create_cover(story, firma, meta)
 
         # -----------------------------
-        # FORM C
+        # INHALT
         # -----------------------------
-        fb_c = safe_get(res, "formblatt_c", {})
+        text = res.get("formblatt_e", "")
 
-        elements.append(Paragraph("Formblatt C", styles["Heading2"]))
+        story.append(Paragraph("<b>Lüftungskonzept</b>", styles["Heading2"]))
+        story.append(Spacer(1, 20))
 
-        if fb_c:
-            table = [["Stufe","Soll","Ist","Status"]]
-            for k,v in fb_c.items():
-                table.append([k, v["erforderlich"], v["vorhanden"], v["status"]])
-            elements.append(box_table(table))
-        else:
-            elements.append(Paragraph("Keine Daten", styles["Normal"]))
+        story.append(Paragraph(text.replace("\n", "<br/>"), styles["Normal"]))
 
-        elements.append(Spacer(1,10))
+        story.append(PageBreak())
 
-        # -----------------------------
-        # FORM D
-        # -----------------------------
-        fb_d = safe_get(res, "formblatt_d", {
-            "massnahme": "-",
-            "begruendung": "-"
-        })
+    # -----------------------------
+    # BUILD mit HEADER/FOOTER
+    # -----------------------------
+    def on_page(canvas, doc):
+        add_header_footer(canvas, doc, firma, meta)
 
-        elements.append(Paragraph("Formblatt D", styles["Heading2"]))
-        elements.append(box_table([
-            ["Maßnahme", fb_d["massnahme"]],
-            ["Begründung", fb_d["begruendung"]],
-        ]))
-
-        elements.append(Spacer(1,10))
-
-        # -----------------------------
-        # FORM E
-        # -----------------------------
-        fb_e = safe_get(res, "formblatt_e", "-")
-
-        elements.append(Paragraph("Formblatt E", styles["Heading2"]))
-        elements.append(box_table([[fb_e]]))
-
-        elements.append(PageBreak())
-
-    doc.build(elements, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
+    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
