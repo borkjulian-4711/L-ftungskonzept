@@ -14,12 +14,12 @@ from logic.infiltration import (
 from logic.ald import calculate_ald_din
 from logic.system_logic import evaluate_system
 from logic.text_generator import generate_concept_text
+from logic.validation import validate_din
 
 from export.pdf_generator import create_multi_pdf
 
 
 st.title("🌀 Lüftungskonzept DIN 1946-6")
-
 
 # -----------------------------
 # PROJEKT
@@ -34,7 +34,6 @@ project_data = {
     "bearbeiter": bearbeiter
 }
 
-
 # -----------------------------
 # SYSTEM
 # -----------------------------
@@ -42,7 +41,6 @@ system = st.selectbox(
     "System",
     ["freie Lüftung", "ventilatorgestützt", "kombiniert"]
 )
-
 
 # -----------------------------
 # GRUNDLAGEN
@@ -55,25 +53,48 @@ qv_selected = levels[level]
 
 st.write("qv:", qv_selected, "m³/h")
 
-
 # -----------------------------
-# RÄUME
+# RAUMTABELLE
 # -----------------------------
 df_rooms = pd.DataFrame({
     "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
     "Fläche": [20, 15, 6],
     "Typ": ["Zuluft", "Zuluft", "Abluft"],
     "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+    "Innenliegend": [False, False, True],
+    "DIN 18017 Kategorie": ["", "", "R-ZD"],
     "Überströmt nach": ["Flur", "Flur", ""]
 })
 
-df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
+typ_options = ["Zuluft", "Überström", "Abluft"]
 
+din_options = [
+    "Wohnzimmer", "Schlafzimmer", "Kinderzimmer",
+    "Arbeitszimmer", "Küche", "Bad", "WC"
+]
+
+din18017_options = ["", "R-ZD", "R-BD", "R-PN", "R-PD"]
+
+raumliste = df_rooms["Raum"].tolist()
+
+df_rooms = st.data_editor(
+    df_rooms,
+    num_rows="dynamic",
+    use_container_width=True,
+    column_config={
+        "Typ": st.column_config.SelectboxColumn(options=typ_options),
+        "Kategorie (DIN 1946-6)": st.column_config.SelectboxColumn(options=din_options),
+        "DIN 18017 Kategorie": st.column_config.SelectboxColumn(options=din18017_options),
+        "Innenliegend": st.column_config.CheckboxColumn(),
+        "Überströmt nach": st.column_config.SelectboxColumn(options=[""] + raumliste)
+    }
+)
+
+# Berechnung
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
 
 st.dataframe(df_rooms)
-
 
 # -----------------------------
 # INFILTRATION
@@ -85,14 +106,11 @@ luftdicht = st.checkbox("luftdicht")
 ez = get_ez_din("EFH", wind, luftdicht)
 q_inf = calculate_infiltration_din(Aenv, ez)
 
-
 # -----------------------------
 # SCHACHT
 # -----------------------------
 shaft = st.checkbox("Schachtlüftung")
-
 q_shaft = calculate_shaft_flow() if shaft else 0
-
 
 # -----------------------------
 # SYSTEMLOGIK
@@ -109,13 +127,11 @@ elif system == "ventilatorgestützt":
 elif system == "kombiniert":
     q_supply = q_mech + q_inf + q_shaft
 
-
 # -----------------------------
 # ALD
 # -----------------------------
 ald = calculate_ald_din(qv_selected, q_supply, wind)
 st.write("ALD:", ald)
-
 
 # -----------------------------
 # SYSTEMBEWERTUNG
@@ -123,6 +139,28 @@ st.write("ALD:", ald)
 res = evaluate_system(q_mech, qv_selected, q_supply)
 st.write("Status:", res["status"])
 
+# -----------------------------
+# VALIDIERUNG
+# -----------------------------
+errors, warnings = validate_din(
+    df_rooms,
+    qv_selected,
+    q_supply,
+    system
+)
+
+st.header("DIN-Prüfung")
+
+if errors:
+    for e in errors:
+        st.error(e)
+
+if warnings:
+    for w in warnings:
+        st.warning(w)
+
+if not errors:
+    st.success("DIN-Anforderungen erfüllt")
 
 # -----------------------------
 # PRÜFBERICHT
@@ -147,7 +185,6 @@ report = generate_concept_text(
 
 st.text_area("Prüfbericht", report, height=400)
 
-
 # -----------------------------
 # PDF EXPORT
 # -----------------------------
@@ -161,10 +198,20 @@ if st.button("📄 PDF Export"):
             "firma": FIRMA,
             "res": {
                 "df_rooms": df_rooms,
-                "formblatt_e": report
+                "formblatt_e": report,
+                "validation": {
+                    "errors": errors,
+                    "warnings": warnings,
+                    "summary": summary
+                }
             }
         }
     })
 
     with open(tmp.name, "rb") as f:
-        st.download_button("Download PDF", f)
+        st.download_button(
+            label="Download PDF",
+            data=f,
+            file_name="Lueftungskonzept.pdf",
+            mime="application/pdf"
+        )
