@@ -14,6 +14,7 @@ from logic.ventilation_levels import calculate_ventilation_levels
 from logic.text_generator import generate_concept_text
 from logic.validation import validate_inputs
 from logic.airflow_intelligence import auto_connect_rooms
+from logic.formblatt_a import evaluate_formblatt_a
 from export.pdf_generator import create_multi_pdf
 
 
@@ -48,6 +49,38 @@ meta = {
 }
 
 # -----------------------------
+# FORMBLATT A
+# -----------------------------
+st.header("Formblatt A – Notwendigkeit")
+
+neubau = st.checkbox("Neubau")
+sanierung = st.checkbox("Sanierung")
+
+fensteranteil = st.slider(
+    "Erneuerte Fenster (%)",
+    0, 100, 50
+) / 100
+
+luftdicht = st.checkbox("Luftdichte Gebäudehülle")
+
+formblatt_a = evaluate_formblatt_a(
+    neubau,
+    sanierung,
+    fensteranteil,
+    luftdicht
+)
+
+st.subheader("Ergebnis")
+
+if formblatt_a["erforderlich"]:
+    st.error("Lüftungskonzept erforderlich")
+else:
+    st.success("Kein Lüftungskonzept erforderlich")
+
+st.write("Begründung:", formblatt_a["begruendung"])
+
+
+# -----------------------------
 # WOHNUNGEN
 # -----------------------------
 st.header("Wohnungen")
@@ -78,41 +111,20 @@ flat = st.selectbox(
 # -----------------------------
 st.header("Eingabedaten")
 
-ANE = st.number_input("Fläche Nutzungseinheit (m²)", 30, 300, 80)
-fWS = st.selectbox("Faktor fWS", [0.2, 0.3, 0.4])
+ANE = st.number_input("Fläche (m²)", 30, 300, 80)
+fWS = st.selectbox("fWS", [0.2, 0.3, 0.4])
 
 # -----------------------------
 # LÜFTUNGSSTUFEN
 # -----------------------------
 levels = calculate_ventilation_levels(ANE, fWS)
 
-st.subheader("Lüftungsstufen nach DIN 1946-6")
+st.subheader("Lüftungsstufen")
 
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("FL", f"{levels['FL']} m³/h")
-col2.metric("RL", f"{levels['RL']} m³/h")
-col3.metric("NL", f"{levels['NL']} m³/h")
-col4.metric("IL", f"{levels['IL']} m³/h")
+st.write(levels)
 
 # -----------------------------
-# DIN KATEGORIEN
-# -----------------------------
-raum_kategorien = [
-    "Wohnzimmer","Schlafzimmer","Kinderzimmer","Arbeitszimmer",
-    "Küche","Bad","Duschraum","WC","Flur","Abstellraum","Hauswirtschaftsraum"
-]
-
-din18017_kategorien = [
-    "",
-    "R-ZD (ca. 40 m³/h)",
-    "R-BD (ca. 32 m³/h)",
-    "R-PN (ca. 48 m³/h)",
-    "R-PD (ca. 40 m³/h)"
-]
-
-# -----------------------------
-# DATENQUELLE
+# RAUMTABELLE
 # -----------------------------
 default_df = pd.DataFrame({
     "Raum": ["Wohnzimmer", "Flur", "Bad"],
@@ -126,28 +138,14 @@ default_df = pd.DataFrame({
 if st.session_state["auto_df"] is not None:
     default_df = st.session_state["auto_df"]
 
-# -----------------------------
-# RAUMTABELLE
-# -----------------------------
-st.subheader("Räume & Luftführung")
-
-df_rooms = st.data_editor(
-    default_df,
-    num_rows="dynamic",
-    use_container_width=True
-)
+df_rooms = st.data_editor(default_df, num_rows="dynamic")
 
 # -----------------------------
-# AUTO-LUFTFÜHRUNG
+# AUTO LUFTFÜHRUNG
 # -----------------------------
-if st.button("🧠 Luftführung automatisch erzeugen", key="auto_airflow"):
+if st.button("🧠 Auto Luftführung", key="auto_air"):
     st.session_state["auto_df"] = auto_connect_rooms(df_rooms)
     st.rerun()
-
-# -----------------------------
-# TEXT
-# -----------------------------
-text_mode = st.selectbox("Textvariante", ["lang","kurz","behoerde"])
 
 # -----------------------------
 # VALIDIERUNG
@@ -155,21 +153,14 @@ text_mode = st.selectbox("Textvariante", ["lang","kurz","behoerde"])
 errors, warnings = validate_inputs(df_rooms)
 
 if errors:
-    st.error("Fehler:")
-    for e in errors:
-        st.write(e)
-
+    st.error(errors)
 elif warnings:
-    st.warning("Hinweise:")
-    for w in warnings:
-        st.write(w)
+    st.warning(warnings)
 
 # -----------------------------
 # BERECHNUNG
 # -----------------------------
 if not errors:
-
-    q_req = levels["FL"]
 
     q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
     n_ald = calculate_ald(delta)
@@ -188,8 +179,7 @@ if not errors:
             "n_ald": n_ald,
             "n_uld": n_uld,
             "uld_edges": uld_edges
-        },
-        mode=text_mode
+        }
     )
 
     st.session_state["project"][flat] = {
@@ -203,7 +193,8 @@ if not errors:
             "n_uld": n_uld,
             "uld_edges": uld_edges,
             "text": text,
-            "levels": levels
+            "levels": levels,
+            "formblatt_a": formblatt_a
         }
     }
 
@@ -219,11 +210,9 @@ if flat in st.session_state["project"]:
     st.write("Feuchteschutz:", data["q_required"])
     st.write("Abluft:", data["q_abluft"])
 
-    st.subheader("Lüftungsstufen")
-    st.write(data["levels"])
 
 # -----------------------------
-# EXPORT
+# PDF EXPORT
 # -----------------------------
 if st.button("📄 PDF Export"):
 
