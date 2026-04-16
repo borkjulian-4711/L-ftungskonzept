@@ -5,14 +5,12 @@ def calculate_ventilation(df_rooms, ANE, fWS):
 
     df = apply_room_airflows(df_rooms)
 
-    # -----------------------------
-    # Abluftsumme
-    # -----------------------------
+    # sichere Filter
+    if "Typ" not in df.columns:
+        return 0, 0, 0, df
+
     q_ab = df[df["Typ"] == "Abluft"]["Volumenstrom (m³/h)"].sum()
 
-    # -----------------------------
-    # Feuchteschutz
-    # -----------------------------
     q_req = ANE * fWS
 
     delta = q_ab - q_req
