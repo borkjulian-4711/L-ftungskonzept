@@ -2,77 +2,36 @@ from reportlab.platypus import *
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import mm
-import os
 
 styles = getSampleStyleSheet()
 
-LOGO_PATH = "assets/logo.png"
+
+# -----------------------------
+# FORMULAR-STIL
+# -----------------------------
+def form_table(data, colWidths=None):
+    return Table(
+        data,
+        colWidths=colWidths,
+        style=[
+            ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ],
+    )
+
+
+def section(title):
+    return Paragraph(f"<b>{title}</b>", styles["Heading3"])
 
 
 # -----------------------------
-# Tabellenstil
-# -----------------------------
-def table_style():
-    return [
-        ("GRID", (0,0), (-1,-1), 0.8, colors.black),
-        ("FONTSIZE", (0,0), (-1,-1), 9),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-    ]
-
-
-# -----------------------------
-# Header / Footer mit Logo
-# -----------------------------
-def header_footer(canvas, doc):
-
-    canvas.saveState()
-
-    width, height = A4
-
-    # Logo
-    if os.path.exists(LOGO_PATH):
-        canvas.drawImage(
-            LOGO_PATH,
-            30,
-            height - 60,
-            width=120,
-            preserveAspectRatio=True,
-            mask='auto'
-        )
-
-    # Firmenblock rechts
-    canvas.setFont("Helvetica", 9)
-
-    canvas.drawRightString(width - 30, height - 30, "Ingenieurbüro Mustermann")
-    canvas.drawRightString(width - 30, height - 42, "Musterstraße 1")
-    canvas.drawRightString(width - 30, height - 54, "12345 Musterstadt")
-    canvas.drawRightString(width - 30, height - 66, "info@buero.de")
-
-    # Linie unter Header
-    canvas.line(30, height - 75, width - 30, height - 75)
-
-    # Footer
-    page_num = canvas.getPageNumber()
-    canvas.drawRightString(width - 30, 15, f"Seite {page_num}")
-
-    canvas.restoreState()
-
-
-# -----------------------------
-# PDF erstellen
+# PDF GENERATOR
 # -----------------------------
 def create_multi_pdf(file, project):
 
-    doc = SimpleDocTemplate(
-        file,
-        pagesize=A4,
-        leftMargin=30,
-        rightMargin=30,
-        topMargin=90,
-        bottomMargin=30
-    )
-
+    doc = SimpleDocTemplate(file, pagesize=A4)
     elements = []
 
     for name, data in project.items():
@@ -80,71 +39,100 @@ def create_multi_pdf(file, project):
         meta = data["meta"]
         res = data["res"]
 
-        # Titel
+        # -----------------------------
+        # 1. TITEL
+        # -----------------------------
         elements.append(Paragraph(
-            "<b>Lüftungskonzept nach DIN 1946-6</b>",
+            "<b>1. Prüfung lufttechnische Maßnahmen (LtM)</b>",
             styles["Title"]
         ))
         elements.append(Spacer(1, 10))
 
-        # Projektblock
-        elements.append(Table([
-            ["Projekt", meta["projekt"]],
-            ["Adresse", meta["adresse"]],
+        # -----------------------------
+        # 2. GEBÄUDEDATEN
+        # -----------------------------
+        elements.append(section("Gebäudedaten"))
+
+        elements.append(form_table([
+            ["Projekt", meta.get("projekt", "")],
+            ["Adresse", meta.get("adresse", "")],
             ["Wohnung", name],
-            ["Bearbeiter", meta["bearbeiter"]],
-        ], colWidths=[150, 350], style=table_style()))
+            ["Bearbeiter", meta.get("bearbeiter", "")]
+        ], colWidths=[180, 300]))
 
         elements.append(Spacer(1, 10))
 
-        # Bewertung
-        elements.append(Paragraph("<b>Bewertung</b>", styles["Heading3"]))
+        # -----------------------------
+        # 3. PARAMETER
+        # -----------------------------
+        elements.append(section("Berechnungsparameter"))
 
-        elements.append(Table([
-            ["Feuchteschutz erfüllt", "Ja" if res["delta"]<=0 else "Nein"],
-            ["Maßnahmen erforderlich", "Ja" if res["delta"]>0 else "Nein"],
-        ], style=table_style()))
+        elements.append(form_table([
+            ["Feuchteschutz (m³/h)", round(res["q_required"], 1)],
+            ["Abluft gesamt (m³/h)", round(res["q_abluft"], 1)],
+            ["Differenz", round(res["delta"], 1)],
+            ["ALD Anzahl", res["n_ald"]],
+            ["ÜLD Anzahl", res["n_uld"]],
+        ]))
 
-        # Räume
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph("<b>Räume</b>", styles["Heading3"]))
 
-        room_data = [["Raum","Typ","Abluft"]]
+        # -----------------------------
+        # 4. RÄUME
+        # -----------------------------
+        elements.append(section("Raumdaten"))
+
+        room_data = [["Raum", "Typ", "Abluft (m³/h)"]]
 
         for _, r in res["df"].iterrows():
             room_data.append([
                 r["Raum"],
                 r["Typ"],
-                r["Abluft (m³/h)"]
+                r.get("Abluft (m³/h)", "")
             ])
 
-        elements.append(Table(room_data, repeatRows=1, style=table_style()))
+        elements.append(form_table(room_data))
 
-        # Luftführung
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph("<b>Luftführung</b>", styles["Heading3"]))
 
-        flow_data = [["Von","Nach","m³/h","ÜLD"]]
+        # -----------------------------
+        # 5. LUFTFÜHRUNG
+        # -----------------------------
+        elements.append(section("Luftführung"))
 
-        for (a,b), d in res["uld_edges"].items():
+        flow_data = [["Von", "Nach", "Volumenstrom", "ÜLD"]]
+
+        for (a, b), d in res["uld_edges"].items():
             flow_data.append([
                 a,
                 b,
-                d["Volumenstrom"],
+                f"{d['Volumenstrom']} m³/h",
                 d["Anzahl"]
             ])
 
-        elements.append(Table(flow_data, repeatRows=1, style=table_style()))
+        elements.append(form_table(flow_data))
 
-        # Text
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph("<b>Beschreibung</b>", styles["Heading3"]))
+
+        # -----------------------------
+        # 6. BEWERTUNG
+        # -----------------------------
+        elements.append(section("Bewertung"))
+
+        elements.append(form_table([
+            ["Feuchteschutz erfüllt", "☑" if res["delta"] <= 0 else "☐"],
+            ["Maßnahmen erforderlich", "☑" if res["delta"] > 0 else "☐"],
+        ]))
+
+        elements.append(Spacer(1, 10))
+
+        # -----------------------------
+        # 7. TEXT
+        # -----------------------------
+        elements.append(section("Zusammenfassung"))
+
         elements.append(Paragraph(res["text"], styles["Normal"]))
 
         elements.append(PageBreak())
 
-    doc.build(
-        elements,
-        onFirstPage=header_footer,
-        onLaterPages=header_footer
-    )
+    doc.build(elements)
