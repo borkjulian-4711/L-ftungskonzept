@@ -1,15 +1,8 @@
 from reportlab.platypus import *
-from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 
 styles = getSampleStyleSheet()
-
-def table_style():
-    return [
-        ("GRID", (0,0), (-1,-1), 0.8, colors.black),
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-    ]
 
 def create_multi_pdf(file, project):
 
@@ -18,26 +11,25 @@ def create_multi_pdf(file, project):
 
     for name, data in project.items():
 
-        meta = data["meta"]
         res = data["res"]
 
+        # Formblatt A
         elements.append(Paragraph("Formblatt A", styles["Heading2"]))
-
-        elements.append(Table([
-            ["Lüftungskonzept erforderlich",
-             "Ja" if res["formblatt_a"]["erforderlich"] else "Nein"],
-            ["Begründung", res["formblatt_a"]["begruendung"]],
-        ], style=table_style()))
+        elements.append(Paragraph(str(res["formblatt_a"]), styles["Normal"]))
 
         elements.append(Spacer(1,10))
 
-        elements.append(Paragraph("Lüftungsstufen", styles["Heading3"]))
-        elements.append(Table([
-            ["FL", res["levels"]["FL"]],
-            ["RL", res["levels"]["RL"]],
-            ["NL", res["levels"]["NL"]],
-            ["IL", res["levels"]["IL"]],
-        ], style=table_style()))
+        # Formblatt B
+        elements.append(Paragraph("Formblatt B", styles["Heading2"]))
+
+        for k, v in res["formblatt_b"].items():
+            elements.append(Paragraph(f"{k}: {v}", styles["Normal"]))
+
+        elements.append(Spacer(1,10))
+
+        # Lüftungsstufen
+        elements.append(Paragraph("Lüftungsstufen", styles["Heading2"]))
+        elements.append(Paragraph(str(res["levels"]), styles["Normal"]))
 
         elements.append(PageBreak())
 
