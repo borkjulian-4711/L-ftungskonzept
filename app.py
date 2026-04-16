@@ -8,6 +8,7 @@ from logic.formblatt_a import evaluate_formblatt_a
 from logic.formblatt_b import evaluate_formblatt_b
 from logic.formblatt_c import evaluate_formblatt_c
 from logic.formblatt_d import evaluate_formblatt_d
+from logic.formblatt_e import generate_formblatt_e
 from export.pdf_generator import create_multi_pdf
 
 
@@ -37,8 +38,6 @@ formblatt_a = evaluate_formblatt_a(
     neubau, sanierung, fensteranteil, luftdicht
 )
 
-st.write(formblatt_a)
-
 # -----------------------------
 # FORMBLATT B
 # -----------------------------
@@ -59,8 +58,6 @@ formblatt_b = evaluate_formblatt_b(
     gebaeudetyp, baujahr, wohneinheiten,
     personen, nutzung, fensterlueftung, infiltration
 )
-
-st.write(formblatt_b)
 
 # -----------------------------
 # WOHNUNGEN
@@ -97,23 +94,25 @@ df_rooms = st.data_editor(pd.DataFrame({
 # -----------------------------
 q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
 
-# -----------------------------
-# FORMBLATT C
-# -----------------------------
 formblatt_c = evaluate_formblatt_c(levels, q_ab)
 
-# -----------------------------
-# FORMBLATT D
-# -----------------------------
 formblatt_d = evaluate_formblatt_d(
     formblatt_a,
     formblatt_b,
     formblatt_c
 )
 
-st.header("Formblatt D – Maßnahmen")
+# -----------------------------
+# FORMBLATT E
+# -----------------------------
+formblatt_e = generate_formblatt_e({
+    "levels": levels,
+    "formblatt_d": formblatt_d
+})
 
-st.write(formblatt_d)
+st.header("Formblatt E – Ergebnis")
+
+st.text_area("Konzept", formblatt_e, height=300)
 
 # -----------------------------
 # SPEICHERN
@@ -124,6 +123,7 @@ st.session_state["project"][flat] = {
         "formblatt_b": formblatt_b,
         "formblatt_c": formblatt_c,
         "formblatt_d": formblatt_d,
+        "formblatt_e": formblatt_e,
         "levels": levels
     }
 }
