@@ -60,25 +60,20 @@ formblatt_b = evaluate_formblatt_b(
 )
 
 # -----------------------------
-# WOHNUNGEN
-# -----------------------------
-if st.button("➕ Wohnung hinzufügen"):
-    name = f"WE{st.session_state['counter']}"
-    st.session_state["project"][name] = {}
-    st.session_state["counter"] += 1
-
-if not st.session_state["project"]:
-    st.stop()
-
-flat = st.selectbox("Wohnung", list(st.session_state["project"].keys()))
-
-# -----------------------------
 # PARAMETER
 # -----------------------------
-ANE = st.number_input("Fläche", 30, 300, 80)
-fWS = st.selectbox("fWS", [0.2, 0.3, 0.4])
+ANE = st.number_input("Fläche (m²)", 30, 300, 80)
 
-levels = calculate_ventilation_levels(ANE, fWS)
+# 🔥 NEUE BERECHNUNG
+levels = calculate_ventilation_levels(
+    ANE,
+    personen,
+    nutzung
+)
+
+st.subheader("Lüftungsstufen (normnah)")
+
+st.write(levels)
 
 # -----------------------------
 # RAUMDATEN
@@ -92,7 +87,7 @@ df_rooms = st.data_editor(pd.DataFrame({
 # -----------------------------
 # BERECHNUNG
 # -----------------------------
-q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, fWS)
+q_req, q_ab, delta, df_res = calculate_ventilation(df_rooms, ANE, 0.3)
 
 formblatt_c = evaluate_formblatt_c(levels, q_ab)
 
@@ -102,22 +97,17 @@ formblatt_d = evaluate_formblatt_d(
     formblatt_c
 )
 
-# -----------------------------
-# FORMBLATT E
-# -----------------------------
 formblatt_e = generate_formblatt_e({
     "levels": levels,
     "formblatt_d": formblatt_d
 })
-
-st.header("Formblatt E – Ergebnis")
 
 st.text_area("Konzept", formblatt_e, height=300)
 
 # -----------------------------
 # SPEICHERN
 # -----------------------------
-st.session_state["project"][flat] = {
+st.session_state["project"]["WE1"] = {
     "res": {
         "formblatt_a": formblatt_a,
         "formblatt_b": formblatt_b,
@@ -129,7 +119,7 @@ st.session_state["project"][flat] = {
 }
 
 # -----------------------------
-# PDF EXPORT
+# EXPORT
 # -----------------------------
 if st.button("PDF Export"):
 
