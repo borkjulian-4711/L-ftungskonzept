@@ -13,14 +13,18 @@ def create_multi_pdf(file, project):
 
         res = data["res"]
 
-        # Formblatt C
-        elements.append(Paragraph("Formblatt C", styles["Heading2"]))
+        # Formblatt D
+        elements.append(Paragraph("Formblatt D – Maßnahmen", styles["Heading2"]))
 
-        for level, values in res["formblatt_c"].items():
-            elements.append(Paragraph(
-                f"{level}: erforderlich {values['erforderlich']} / vorhanden {values['vorhanden']} → {values['status']}",
-                styles["Normal"]
-            ))
+        elements.append(Paragraph(
+            f"Maßnahme: {res['formblatt_d']['massnahme']}",
+            styles["Normal"]
+        ))
+
+        elements.append(Paragraph(
+            f"Begründung: {res['formblatt_d']['begruendung']}",
+            styles["Normal"]
+        ))
 
         elements.append(PageBreak())
 
