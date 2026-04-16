@@ -87,20 +87,18 @@ st.text_area("Konzept", formblatt_e)
 # -----------------------------
 # EXPORT
 # -----------------------------
-if st.button("PDF Export"):
-
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-
-    create_multi_pdf(tmp.name, {
-        "WE1": {
-            "res": {
-                "levels": levels,
-                "formblatt_c": formblatt_c,
-                "formblatt_d": formblatt_d,
-                "formblatt_e": formblatt_e
-            }
+create_multi_pdf(tmp.name, {
+    "WE1": {
+        "res": {
+            "formblatt_a": formblatt_a,
+            "formblatt_b": formblatt_b,
+            "formblatt_c": formblatt_c,
+            "formblatt_d": formblatt_d,
+            "formblatt_e": formblatt_e,
+            "levels": levels
         }
-    })
+    }
+})
 
     with open(tmp.name, "rb") as f:
         st.download_button("Download", f)
