@@ -1,14 +1,19 @@
-def calculate_ventilation_levels(ANE, fWS):
+def calculate_ventilation_levels(ANE, personen, nutzung):
 
     # -----------------------------
-    # Feuchteschutzlüftung
+    # Nutzungsabhängige Luftmenge
     # -----------------------------
-    q_FL = ANE * fWS
+    if nutzung == "normal":
+        q_person = 30
+    elif nutzung == "reduziert":
+        q_person = 20
+    else:
+        q_person = 40
 
     # -----------------------------
-    # Nennlüftung (Grundansatz)
+    # Nennlüftung
     # -----------------------------
-    q_NL = ANE * 0.5
+    q_NL = personen * q_person
 
     # -----------------------------
     # Reduzierte Lüftung
@@ -19,6 +24,11 @@ def calculate_ventilation_levels(ANE, fWS):
     # Intensivlüftung
     # -----------------------------
     q_IL = q_NL * 1.3
+
+    # -----------------------------
+    # Feuchteschutz
+    # -----------------------------
+    q_FL = max(ANE * 0.3, personen * 15)
 
     return {
         "FL": round(q_FL, 1),
