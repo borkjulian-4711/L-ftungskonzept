@@ -7,7 +7,11 @@ import logic.din1946_core as core
 
 from logic.air_network import propagate_flows, calculate_uld
 from logic.din18017 import apply_din18017
-from logic.infiltration import get_ez_din, calculate_infiltration_din, calculate_shaft_flow
+from logic.infiltration import (
+    get_ez_din,
+    calculate_infiltration_din,
+    calculate_shaft_flow
+)
 from logic.ald import calculate_ald_din
 from logic.system_logic import evaluate_system
 from logic.formblatt_a import evaluate_formblatt_a
@@ -61,14 +65,14 @@ system = st.selectbox(
 # -----------------------------
 # GRUNDLAGEN
 # -----------------------------
-ANE = st.number_input("ANE", 30, 300, 80)
+ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
 levels = core.calculate_levels(ANE)
 
-level = st.selectbox("Stufe", list(levels.keys()))
+level = st.selectbox("Lüftungsstufe", list(levels.keys()))
 qv_selected = levels[level]
 
-st.write("qv:", qv_selected)
+st.write("qv:", qv_selected, "m³/h")
 
 
 # -----------------------------
@@ -80,7 +84,7 @@ df_rooms = pd.DataFrame({
     "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Bad"]
 })
 
-df_rooms = st.data_editor(df_rooms)
+df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
 
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
@@ -95,60 +99,85 @@ st.dataframe(df_rooms)
 flows = propagate_flows(df_rooms)
 
 for r, f in flows.items():
-    st.write(r, f)
+    st.write(r, round(f, 1))
 
 
 # -----------------------------
 # INFILTRATION
 # -----------------------------
 wind = st.selectbox("Wind", ["windschwach", "windstark"])
-Aenv = st.number_input("Aenv", 10.0, 500.0, 200.0)
+Aenv = st.number_input("Hüllfläche Aenv", 10.0, 500.0, 200.0)
 luftdicht = st.checkbox("luftdicht")
 
 ez = get_ez_din("EFH", wind, luftdicht)
 q_inf = calculate_infiltration_din(Aenv, ez)
 
-# Schacht
-shaft = st.checkbox("Schacht")
+st.write("Infiltration:", q_inf)
+
+
+# -----------------------------
+# SCHACHT
+# -----------------------------
+shaft = st.checkbox("Schachtlüftung")
 
 if shaft:
     q_shaft = calculate_shaft_flow()
 else:
     q_shaft = 0
 
-q_passive = q_inf + q_shaft
+st.write("Schacht:", q_shaft)
 
 
 # -----------------------------
-# SYSTEMBERECHNUNG
+# SYSTEMLOGIK DIN
 # -----------------------------
-if system == "ventilatorgestützt":
+q_mech = df_rooms["Abluft (m³/h)"].sum()
+
+if system == "freie Lüftung":
+    q_supply = q_inf + q_shaft
+
+elif system == "ventilatorgestützt":
     df_rooms, zu, ab = core.dimension_ventilation_system(df_rooms, qv_selected)
-else:
-    zu, ab, _ = core.balance_system(df_rooms)
+    q_supply = zu
+
+elif system == "kombiniert":
+    q_supply = q_mech + q_inf + q_shaft
 
 
 # -----------------------------
 # ALD
 # -----------------------------
-ald = calculate_ald_din(qv_selected, q_passive, wind)
+ald = calculate_ald_din(qv_selected, q_supply, wind)
 
 st.write("ALD:", ald)
 
 
 # -----------------------------
-# SYSTEM
+# SYSTEMBEWERTUNG
 # -----------------------------
-res = evaluate_system(ab, qv_selected, q_passive)
+res = evaluate_system(q_mech, qv_selected, q_supply)
 
-st.write(res)
+st.write("Systemstatus:", res["status"])
+
+
+# -----------------------------
+# TEXT
+# -----------------------------
+text = generate_concept_text(
+    {"levels": levels},
+    project_data,
+    "lang"
+)
+
+st.text_area("Konzept", text)
 
 
 # -----------------------------
 # PDF
 # -----------------------------
-if st.button("PDF"):
-    tmp = tempfile.NamedTemporaryFile(delete=False)
+if st.button("PDF Export"):
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
     create_multi_pdf(tmp.name, {
         "WE1": {
@@ -157,10 +186,10 @@ if st.button("PDF"):
             "res": {
                 "df_rooms": df_rooms,
                 "summary": {
-                    "zu": zu,
-                    "ab": ab,
+                    "zu": q_supply,
+                    "ab": q_mech,
                     "inf": q_inf,
-                    "diff": q_passive,
+                    "diff": q_supply - q_mech,
                     "status": res["status"]
                 }
             }
@@ -168,4 +197,4 @@ if st.button("PDF"):
     })
 
     with open(tmp.name, "rb") as f:
-        st.download_button("Download", f)
+        st.download_button("Download PDF", f)
