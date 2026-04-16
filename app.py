@@ -14,10 +14,6 @@ from logic.infiltration import (
 )
 from logic.ald import calculate_ald_din
 from logic.system_logic import evaluate_system
-from logic.formblatt_a import evaluate_formblatt_a
-from logic.formblatt_b import evaluate_formblatt_b
-from logic.text_generator import generate_concept_text
-from logic.validation import validate_din
 from export.pdf_generator import create_multi_pdf
 
 
@@ -68,7 +64,6 @@ system = st.selectbox(
 ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
 levels = core.calculate_levels(ANE)
-
 level = st.selectbox("Lüftungsstufe", list(levels.keys()))
 qv_selected = levels[level]
 
@@ -79,9 +74,9 @@ st.write("qv:", qv_selected, "m³/h")
 # RÄUME
 # -----------------------------
 df_rooms = pd.DataFrame({
-    "Raum": ["Wohnzimmer", "Bad"],
-    "Typ": ["Zuluft", "Abluft"],
-    "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Bad"]
+    "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+    "Typ": ["Zuluft", "Zuluft", "Abluft"],
+    "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"]
 })
 
 df_rooms = st.data_editor(df_rooms, num_rows="dynamic")
@@ -94,25 +89,14 @@ st.dataframe(df_rooms)
 
 
 # -----------------------------
-# LUFTNETZ
-# -----------------------------
-flows = propagate_flows(df_rooms)
-
-for r, f in flows.items():
-    st.write(r, round(f, 1))
-
-
-# -----------------------------
 # INFILTRATION
 # -----------------------------
 wind = st.selectbox("Wind", ["windschwach", "windstark"])
-Aenv = st.number_input("Hüllfläche Aenv", 10.0, 500.0, 200.0)
+Aenv = st.number_input("Hüllfläche", 10.0, 500.0, 200.0)
 luftdicht = st.checkbox("luftdicht")
 
 ez = get_ez_din("EFH", wind, luftdicht)
 q_inf = calculate_infiltration_din(Aenv, ez)
-
-st.write("Infiltration:", q_inf)
 
 
 # -----------------------------
@@ -120,16 +104,11 @@ st.write("Infiltration:", q_inf)
 # -----------------------------
 shaft = st.checkbox("Schachtlüftung")
 
-if shaft:
-    q_shaft = calculate_shaft_flow()
-else:
-    q_shaft = 0
-
-st.write("Schacht:", q_shaft)
+q_shaft = calculate_shaft_flow() if shaft else 0
 
 
 # -----------------------------
-# SYSTEMLOGIK DIN
+# SYSTEMLOGIK
 # -----------------------------
 q_mech = df_rooms["Abluft (m³/h)"].sum()
 
@@ -148,7 +127,6 @@ elif system == "kombiniert":
 # ALD
 # -----------------------------
 ald = calculate_ald_din(qv_selected, q_supply, wind)
-
 st.write("ALD:", ald)
 
 
@@ -156,20 +134,7 @@ st.write("ALD:", ald)
 # SYSTEMBEWERTUNG
 # -----------------------------
 res = evaluate_system(q_mech, qv_selected, q_supply)
-
-st.write("Systemstatus:", res["status"])
-
-
-# -----------------------------
-# TEXT
-# -----------------------------
-text = generate_concept_text(
-    {"levels": levels},
-    project_data,
-    "lang"
-)
-
-st.text_area("Konzept", text)
+st.write("Status:", res["status"])
 
 
 # -----------------------------
