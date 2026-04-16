@@ -14,13 +14,10 @@ from logic.air_network import propagate_flows, calculate_uld
 # DIN 18017
 from logic.din18017 import apply_din18017
 
-# Infiltration
-from logic.infiltration import (
-    get_ez,
-    calculate_infiltration
-)
+# Infiltration (DIN-konform)
+from logic.infiltration import get_ez_din, calculate_infiltration_din
 
-# ALD (NEU)
+# ALD (DIN)
 from logic.ald import calculate_ald_din
 
 # Systembewertung
@@ -47,7 +44,7 @@ st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017-3")
 
 
 # -----------------------------
-# FIRMA (fix aus config)
+# FIRMA
 # -----------------------------
 st.header("Firma")
 
@@ -98,7 +95,7 @@ st.header("Formblatt A")
 neubau = st.checkbox("Neubau")
 sanierung = st.checkbox("Sanierung")
 fensteranteil = st.slider("Fensteranteil (%)", 0, 100, 50) / 100
-luftdicht = st.checkbox("Luftdicht")
+luftdicht = st.checkbox("Gebäude luftdicht (n50 < 1.5)")
 
 formblatt_a = evaluate_formblatt_a(
     neubau, sanierung, fensteranteil, luftdicht
@@ -110,7 +107,7 @@ formblatt_a = evaluate_formblatt_a(
 # -----------------------------
 st.header("Formblatt B")
 
-gebaeudetyp = st.selectbox("Gebäudetyp", ["EFH", "MFH", "Wohnung"])
+gebaeudetyp = st.selectbox("Gebäudetyp", ["EFH", "DHH", "MFH", "Wohnung"])
 baujahr = st.number_input("Baujahr", 1900, 2025, 2000)
 
 personen = st.number_input("Personen", 1, 10, 2)
@@ -129,7 +126,6 @@ st.header("Grunddaten")
 
 ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
-# DIN Volumenstrom (aktuell vereinfachte Näherung)
 qv = core.calculate_qv_ges(ANE)
 levels = core.calculate_levels(qv)
 
@@ -191,21 +187,22 @@ zu, ab, _ = core.balance_system(df_rooms)
 
 
 # -----------------------------
-# INFILTRATION
+# INFILTRATION (DIN)
 # -----------------------------
 st.header("Infiltration")
 
 wind = st.selectbox("Windgebiet", ["windschwach", "windstark"])
-Aenv = st.number_input("Hüllfläche Aenv (m²)", 10.0, 500.0, 40.0)
+Aenv = st.number_input("Hüllfläche Aenv (m²)", 10.0, 500.0, 200.0)
 
-ez = get_ez(wind, gebaeudetyp)
-q_inf = calculate_infiltration(Aenv, ez)
+ez = get_ez_din(gebaeudetyp, wind, luftdicht)
+q_inf = calculate_infiltration_din(Aenv, ez)
 
+st.write("ez:", ez)
 st.write("Infiltration:", q_inf, "m³/h")
 
 
 # -----------------------------
-# ALD (DIN KONFORM)
+# ALD (DIN)
 # -----------------------------
 st.header("ALD-Auslegung (DIN)")
 
@@ -216,6 +213,7 @@ ald_result = calculate_ald_din(
 )
 
 if ald_result["anzahl"] > 0:
+
     st.warning("ALD erforderlich")
 
     st.write("Fehlende Luftmenge:", ald_result["q_required"], "m³/h")
