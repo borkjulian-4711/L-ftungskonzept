@@ -1,5 +1,3 @@
-# export/pdf_generator.py
-
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer,
     Table, TableStyle, PageBreak
@@ -12,66 +10,9 @@ from reportlab.lib.units import cm
 styles = getSampleStyleSheet()
 
 
-# =========================================================
-# FORMBLATT A
-# =========================================================
-def add_formblatt_a(story, data):
-
-    story.append(Paragraph("Formblatt A – Lüftungskonzept erforderlich?", styles["Heading2"]))
-    story.append(Spacer(1, 10))
-
-    table_data = [
-        ["Kriterium", "Ergebnis"],
-        ["Neubau", str(data.get("neubau", ""))],
-        ["Sanierung", str(data.get("sanierung", ""))],
-        ["Fensteranteil", str(data.get("fensteranteil", ""))],
-        ["Luftdicht", str(data.get("luftdicht", ""))],
-        ["Ergebnis", str(data.get("ergebnis", ""))]
-    ]
-
-    table = Table(table_data, colWidths=[10*cm, 6*cm])
-
-    table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold")
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
-
-# =========================================================
-# FORMBLATT B
-# =========================================================
-def add_formblatt_b(story, data):
-
-    story.append(Paragraph("Formblatt B – Nutzungseinheit", styles["Heading2"]))
-    story.append(Spacer(1, 10))
-
-    table_data = [
-        ["Parameter", "Wert"],
-        ["Gebäudetyp", data.get("gebaeudetyp", "")],
-        ["Baujahr", data.get("baujahr", "")],
-        ["Personen", data.get("personen", "")],
-        ["Nutzung", data.get("nutzung", "")],
-    ]
-
-    table = Table(table_data, colWidths=[8*cm, 8*cm])
-
-    table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold")
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
-
-# =========================================================
-# FORMBLATT C (bereits DIN-nah)
-# =========================================================
+# -----------------------------
+# FORMBLATT C
+# -----------------------------
 def add_formblatt_c(story, df_rooms):
 
     story.append(Paragraph("Formblatt C – Raumweise Luftvolumenströme", styles["Heading2"]))
@@ -120,37 +61,9 @@ def add_formblatt_c(story, df_rooms):
     story.append(PageBreak())
 
 
-# =========================================================
-# FORMBLATT D
-# =========================================================
-def add_formblatt_d(story, data):
-
-    story.append(Paragraph("Formblatt D – Bewertung", styles["Heading2"]))
-    story.append(Spacer(1, 10))
-
-    table_data = [
-        ["Kriterium", "Bewertung"],
-        ["Formblatt A", data.get("a", "")],
-        ["Formblatt B", data.get("b", "")],
-        ["Formblatt C", data.get("c", "")],
-        ["Gesamtbewertung", data.get("gesamt", "")]
-    ]
-
-    table = Table(table_data, colWidths=[10*cm, 6*cm])
-
-    table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold")
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
-
-# =========================================================
-# FORMBLATT E (TEXT + UNTERSCHRIFT)
-# =========================================================
+# -----------------------------
+# FORMBLATT E (PRÜFBERICHT)
+# -----------------------------
 def add_formblatt_e(story, text):
 
     story.append(Paragraph("Formblatt E – Lüftungskonzept", styles["Heading2"]))
@@ -159,7 +72,6 @@ def add_formblatt_e(story, text):
     story.append(Paragraph(text, styles["Normal"]))
     story.append(Spacer(1, 30))
 
-    # Unterschrift
     table = Table([
         ["Ort, Datum", "Unterschrift"],
         ["", ""]
@@ -174,9 +86,9 @@ def add_formblatt_e(story, text):
     story.append(PageBreak())
 
 
-# =========================================================
-# HAUPTFUNKTION
-# =========================================================
+# -----------------------------
+# PDF GENERATOR
+# -----------------------------
 def create_multi_pdf(filename, data):
 
     doc = SimpleDocTemplate(filename, pagesize=A4)
@@ -196,24 +108,16 @@ def create_multi_pdf(filename, data):
         story.append(Paragraph(f"Adresse: {meta.get('adresse','')}", styles["Normal"]))
         story.append(Spacer(1, 10))
 
-        story.append(Paragraph(firma.get("firma", ""), styles["Normal"]))
+        story.append(Paragraph(firma.get("name", ""), styles["Normal"]))
         story.append(Paragraph(firma.get("anschrift", ""), styles["Normal"]))
 
         story.append(PageBreak())
 
-        # Formblätter
-        if "formblatt_a" in res:
-            add_formblatt_a(story, res["formblatt_a"])
-
-        if "formblatt_b" in res:
-            add_formblatt_b(story, res["formblatt_b"])
-
+        # Formblatt C
         if "df_rooms" in res:
             add_formblatt_c(story, res["df_rooms"])
 
-        if "formblatt_d" in res:
-            add_formblatt_d(story, res["formblatt_d"])
-
+        # Formblatt E (Bericht)
         if "formblatt_e" in res:
             add_formblatt_e(story, res["formblatt_e"])
 
