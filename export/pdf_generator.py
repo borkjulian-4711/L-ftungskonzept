@@ -1,12 +1,17 @@
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, Table, TableStyle
+    SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak,
+    Table, TableStyle
 )
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus.tableofcontents import TableOfContents
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 
 styles = getSampleStyleSheet()
+
+# TOC Styles
+styles.add(ParagraphStyle(name='TOCHeading', fontSize=14, spaceAfter=10))
 
 
 # -----------------------------
@@ -46,35 +51,40 @@ def create_cover(story, firma, meta):
     story.append(Paragraph(f"<b>Bearbeiter:</b> {meta.get('bearbeiter','')}", styles["Normal"]))
     story.append(Paragraph(f"<b>Datum:</b> {meta.get('datum','')}", styles["Normal"]))
 
-    story.append(Spacer(1, 60))
-
-    story.append(Paragraph(firma.get("firma",""), styles["Normal"]))
-    story.append(Paragraph(firma.get("anschrift",""), styles["Normal"]))
-    story.append(Paragraph(firma.get("kontakt",""), styles["Normal"]))
-
     story.append(PageBreak())
 
 
 # -----------------------------
-# FORMBLATT A
+# INHALTSVERZEICHNIS
 # -----------------------------
-def add_formblatt_a(story, data):
+def create_toc(story):
 
-    story.append(Paragraph("<b>Formblatt A – Notwendigkeit Lüftungskonzept</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
+    story.append(Paragraph("Inhaltsverzeichnis", styles["Heading1"]))
 
-    table_data = [
-        ["Kriterium", "Ergebnis"],
-        ["Neubau", str(data.get("neubau",""))],
-        ["Sanierung", str(data.get("sanierung",""))],
-        ["Luftdicht", str(data.get("luftdicht",""))],
-        ["Ergebnis", str(data.get("ergebnis",""))],
+    toc = TableOfContents()
+    toc.levelStyles = [
+        ParagraphStyle(fontSize=10, name='TOC1', leftIndent=20, firstLineIndent=-20)
     ]
 
-    table = Table(table_data)
+    story.append(toc)
+    story.append(PageBreak())
+
+
+# -----------------------------
+# UNTERSCHRIFT
+# -----------------------------
+def add_signature(story):
+
+    story.append(Spacer(1, 40))
+
+    table = Table([
+        ["Ort, Datum", "Unterschrift / Stempel"],
+        ["____________________", "____________________________"]
+    ], colWidths=[8*cm, 8*cm])
+
     table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("LINEABOVE", (0,1), (0,1), 0.5, colors.black),
+        ("LINEABOVE", (1,1), (1,1), 0.5, colors.black),
     ]))
 
     story.append(table)
@@ -82,41 +92,16 @@ def add_formblatt_a(story, data):
 
 
 # -----------------------------
-# FORMBLATT B
-# -----------------------------
-def add_formblatt_b(story, data):
-
-    story.append(Paragraph("<b>Formblatt B – Gebäudeangaben</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
-
-    table_data = [
-        ["Parameter", "Wert"],
-        ["Gebäudetyp", data.get("gebaeudetyp","")],
-        ["Baujahr", str(data.get("baujahr",""))],
-        ["Personen", str(data.get("personen",""))],
-    ]
-
-    table = Table(table_data)
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-    ]))
-
-    story.append(table)
-    story.append(PageBreak())
-
-
-# -----------------------------
-# FORMBLATT C (RAUMTABELLE)
+# FORMBLATT C
 # -----------------------------
 def add_formblatt_c(story, df_rooms):
 
-    story.append(Paragraph("<b>Formblatt C – Raumweise Luftvolumenströme</b>", styles["Heading2"]))
+    story.append(Paragraph("Formblatt C – Raumweise Luftvolumenströme", styles["Heading2"]))
     story.append(Spacer(1, 10))
 
     table_data = [[
-        "Raum", "Typ", "Fläche (m²)",
-        "Zuluft (m³/h)", "Abluft (m³/h)", "Überströmt nach"
+        "Raum", "Typ", "Fläche",
+        "Zuluft", "Abluft", "Überströmt"
     ]]
 
     for _, row in df_rooms.iterrows():
@@ -134,7 +119,6 @@ def add_formblatt_c(story, df_rooms):
     table.setStyle(TableStyle([
         ("GRID", (0,0), (-1,-1), 0.5, colors.black),
         ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
     ]))
 
     story.append(table)
@@ -142,23 +126,24 @@ def add_formblatt_c(story, df_rooms):
 
 
 # -----------------------------
-# FORMBLATT E (BILANZ)
+# FORMBLATT E
 # -----------------------------
 def add_formblatt_e(story, summary):
 
-    story.append(Paragraph("<b>Formblatt E – Luftmengenbilanz</b>", styles["Heading2"]))
+    story.append(Paragraph("Formblatt E – Luftmengenbilanz", styles["Heading2"]))
     story.append(Spacer(1, 10))
 
     table_data = [
         ["Parameter", "Wert"],
-        ["Zuluft gesamt", f"{summary.get('zu',0)} m³/h"],
-        ["Abluft gesamt", f"{summary.get('ab',0)} m³/h"],
-        ["Infiltration", f"{summary.get('inf',0)} m³/h"],
-        ["Differenz", f"{summary.get('diff',0)} m³/h"],
-        ["Ergebnis", summary.get("status","")]
+        ["Zuluft", f"{summary['zu']}"],
+        ["Abluft", f"{summary['ab']}"],
+        ["Infiltration", f"{summary['inf']}"],
+        ["Differenz", f"{summary['diff']}"],
+        ["Ergebnis", summary["status"]],
     ]
 
     table = Table(table_data)
+
     table.setStyle(TableStyle([
         ("GRID", (0,0), (-1,-1), 0.5, colors.black),
         ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
@@ -185,18 +170,22 @@ def create_multi_pdf(path, data):
         # Deckblatt
         create_cover(story, firma, meta)
 
-        # Text
-        story.append(Paragraph("<b>Lüftungskonzept</b>", styles["Heading2"]))
+        # Inhaltsverzeichnis
+        create_toc(story)
+
+        # Haupttext
+        story.append(Paragraph("Lüftungskonzept", styles["Heading1"]))
         story.append(Spacer(1, 20))
         story.append(Paragraph(res.get("formblatt_e","").replace("\n","<br/>"), styles["Normal"]))
         story.append(PageBreak())
 
+        # Unterschrift
+        add_signature(story)
+
         # Anlagen
-        story.append(Paragraph("<b>Anlagen</b>", styles["Heading1"]))
+        story.append(Paragraph("Anlagen", styles["Heading1"]))
         story.append(PageBreak())
 
-        add_formblatt_a(story, res.get("formblatt_a", {}))
-        add_formblatt_b(story, res.get("formblatt_b", {}))
         add_formblatt_c(story, res.get("df_rooms"))
         add_formblatt_e(story, res.get("summary"))
 
