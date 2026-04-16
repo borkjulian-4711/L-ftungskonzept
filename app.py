@@ -24,6 +24,9 @@ from logic.infiltration import (
     calculate_effective_supply
 )
 
+# ALD
+from logic.ald import calculate_ald
+
 # Formblätter
 from logic.formblatt_a import evaluate_formblatt_a
 from logic.formblatt_b import evaluate_formblatt_b
@@ -83,6 +86,7 @@ formblatt_b = evaluate_formblatt_b(
 st.header("Grunddaten")
 
 ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
+
 qv = calculate_qv_ges(ANE)
 levels = calculate_levels(qv)
 
@@ -111,7 +115,8 @@ typ_options = ["Zuluft", "Überström", "Abluft"]
 
 din1946_options = [
     "Wohnzimmer", "Schlafzimmer", "Kinderzimmer",
-    "Küche", "Bad", "WC", "Flur"
+    "Arbeitszimmer", "Küche", "Bad", "WC",
+    "Flur", "Abstellraum", "Hauswirtschaftsraum"
 ]
 
 din18017_options = ["", "R-ZD", "R-BD", "R-PN", "R-PD"]
@@ -196,6 +201,23 @@ delta = q_eff - ab
 st.write("Differenz:", delta)
 
 # -----------------------------
+# ALD AUSLEGUNG
+# -----------------------------
+st.header("ALD-Auslegung")
+
+if delta < 0:
+    q_needed = abs(delta)
+
+    ald = calculate_ald(q_needed)
+
+    st.write("Zusätzlicher Bedarf:", q_needed)
+    st.write("Anzahl ALD:", ald["anzahl"])
+    st.write("Leistung gesamt:", ald["gesamt"])
+
+else:
+    st.success("Keine ALDs erforderlich")
+
+# -----------------------------
 # VALIDIERUNG
 # -----------------------------
 errors, warnings = validate_din(df_rooms, flows, qv_selected, ab)
@@ -228,7 +250,9 @@ st.text_area("Text", formblatt_e, height=250)
 # -----------------------------
 # PDF EXPORT
 # -----------------------------
-if st.button("PDF Export"):
+st.header("Export")
+
+if st.button("📄 PDF Export"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
 
