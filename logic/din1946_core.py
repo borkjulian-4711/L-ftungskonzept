@@ -1,20 +1,23 @@
 # logic/din1946_core.py
 
+# -----------------------------
+# Lüftungsstufen (DIN 1946-6)
+# -----------------------------
 def calculate_qv_ges(ANE, level="FL"):
     """
-    DIN 1946-6 Luftvolumenstrom je Lüftungsstufe
+    Luftvolumenstrom je Lüftungsstufe nach DIN
     """
 
     h = 2.5
     V = ANE * h
 
-    if level == "FL":
+    if level == "FL":      # Feuchteschutz
         n = 0.3
-    elif level == "RL":
+    elif level == "RL":    # reduzierte Lüftung
         n = 0.5
-    elif level == "NL":
+    elif level == "NL":    # Nennlüftung
         n = 0.7
-    elif level == "IL":
+    elif level == "IL":    # Intensivlüftung
         n = 1.0
     else:
         n = 0.5
@@ -31,49 +34,73 @@ def calculate_levels(ANE):
     }
 
 
-def distribute_airflows(df_rooms, qv_total):
+# -----------------------------
+# ZULUFT (ECHTE DIN-NÄHERUNG)
+# -----------------------------
+def distribute_airflows(df_rooms, qv_target):
+    """
+    DIN-nahe Zuluftverteilung:
+    feste Raumwerte + Skalierung
+    """
+
     df = df_rooms.copy()
 
-    factors = {
-        "Wohnzimmer": 3,
-        "Schlafzimmer": 2,
-        "Kinderzimmer": 2
+    # DIN-nahe Grundwerte
+    supply_table = {
+        "Wohnzimmer": 40,
+        "Schlafzimmer": 30,
+        "Kinderzimmer": 30,
+        "Arbeitszimmer": 30,
+        "Esszimmer": 30
     }
-
-    df["fR,zu"] = df["Kategorie (DIN 1946-6)"].map(factors).fillna(1)
-
-    total_f = df[df["Typ"] == "Zuluft"]["fR,zu"].sum()
 
     df["Zuluft (m³/h)"] = 0
 
-    if total_f > 0:
-        for i, row in df.iterrows():
-            if row["Typ"] == "Zuluft":
-                df.loc[i, "Zuluft (m³/h)"] = round(qv_total * row["fR,zu"] / total_f)
+    # Grundverteilung
+    for i, row in df.iterrows():
+        if row["Typ"] == "Zuluft":
+            df.loc[i, "Zuluft (m³/h)"] = supply_table.get(
+                row["Kategorie (DIN 1946-6)"], 20
+            )
+
+    # Summe berechnen
+    total_supply = df["Zuluft (m³/h)"].sum()
+
+    # Skalierung auf Zielwert
+    if total_supply > 0:
+        factor = qv_target / total_supply
+        df["Zuluft (m³/h)"] = (df["Zuluft (m³/h)"] * factor).round()
 
     return df
 
 
+# -----------------------------
+# ABLUFT (DIN)
+# -----------------------------
 def apply_exhaust_values(df):
     df = df.copy()
 
-    mapping = {
+    exhaust_table = {
         "Küche": 60,
         "Bad": 40,
-        "WC": 30
+        "WC": 30,
+        "Hauswirtschaftsraum": 30
     }
 
     df["Abluft (m³/h)"] = 0
 
     for i, row in df.iterrows():
         if row["Typ"] == "Abluft":
-            df.loc[i, "Abluft (m³/h)"] = mapping.get(
+            df.loc[i, "Abluft (m³/h)"] = exhaust_table.get(
                 row["Kategorie (DIN 1946-6)"], 30
             )
 
     return df
 
 
+# -----------------------------
+# BILANZ (freie Lüftung)
+# -----------------------------
 def balance_system(df):
     zu = df["Zuluft (m³/h)"].sum()
     ab = df["Abluft (m³/h)"].sum()
@@ -82,9 +109,14 @@ def balance_system(df):
 
 
 # -----------------------------
-# Ventilatorgestützt (DIN 5.x)
+# VENTILATORGESTÜTZT (DIN 5.x)
 # -----------------------------
 def dimension_ventilation_system(df, qv_target):
+    """
+    Dimensionierung nach DIN:
+    Abluft wird auf Ziel skaliert
+    Zuluft = Abluft
+    """
 
     df = df.copy()
 
