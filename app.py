@@ -18,6 +18,9 @@ from logic.validation import validate_din
 from logic.correction_engine import generate_corrections
 from logic.auto_fix import auto_fix_system
 
+from logic.test_cases import get_test_cases
+from logic.test_runner import run_tests
+
 from export.pdf_generator import create_multi_pdf
 
 
@@ -27,6 +30,8 @@ st.title("🌀 Lüftungskonzept DIN 1946-6")
 # -----------------------------
 # PROJEKT
 # -----------------------------
+st.header("Projekt")
+
 projekt = st.text_input("Projekt")
 adresse = st.text_input("Adresse")
 bearbeiter = st.text_input("Bearbeiter")
@@ -41,8 +46,10 @@ project_data = {
 # -----------------------------
 # SYSTEM
 # -----------------------------
+st.header("System")
+
 system = st.selectbox(
-    "System",
+    "Lüftungssystem",
     ["freie Lüftung", "ventilatorgestützt", "kombiniert"]
 )
 
@@ -50,18 +57,22 @@ system = st.selectbox(
 # -----------------------------
 # GRUNDLAGEN
 # -----------------------------
+st.header("Grundlagen")
+
 ANE = st.number_input("Wohnfläche ANE (m²)", 30, 300, 80)
 
 levels = core.calculate_levels(ANE)
 level = st.selectbox("Lüftungsstufe", list(levels.keys()))
 qv_selected = levels[level]
 
-st.write("qv:", qv_selected, "m³/h")
+st.write("Erforderlicher Volumenstrom:", qv_selected, "m³/h")
 
 
 # -----------------------------
 # RAUMTABELLE (MIT DROPDOWNS)
 # -----------------------------
+st.header("Räume & Luftführung")
+
 default_df = pd.DataFrame({
     "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
     "Fläche": [20, 15, 6],
@@ -106,14 +117,17 @@ df_rooms = df_rooms.fillna("")
 df_rooms = core.distribute_airflows(df_rooms, qv_selected)
 df_rooms = core.apply_exhaust_values(df_rooms)
 
+st.subheader("Berechnete Luftmengen")
 st.dataframe(df_rooms)
 
 
 # -----------------------------
 # INFILTRATION
 # -----------------------------
+st.header("Infiltration")
+
 wind = st.selectbox("Wind", ["windschwach", "windstark"])
-Aenv = st.number_input("Hüllfläche Aenv", 10.0, 500.0, 200.0)
+Aenv = st.number_input("Hüllfläche Aenv (m²)", 10.0, 500.0, 200.0)
 luftdicht = st.checkbox("luftdicht")
 
 ez = get_ez_din("EFH", wind, luftdicht)
@@ -146,13 +160,17 @@ elif system == "kombiniert":
 # -----------------------------
 # ALD
 # -----------------------------
+st.header("ALD")
+
 ald = calculate_ald_din(qv_selected, q_supply, wind)
-st.write("ALD:", ald)
+st.write(ald)
 
 
 # -----------------------------
 # SYSTEMBEWERTUNG
 # -----------------------------
+st.header("Systembewertung")
+
 res = evaluate_system(q_mech, qv_selected, q_supply)
 st.write("Status:", res["status"])
 
@@ -160,14 +178,14 @@ st.write("Status:", res["status"])
 # -----------------------------
 # VALIDIERUNG
 # -----------------------------
+st.header("DIN-Prüfung")
+
 errors, warnings = validate_din(
     df_rooms,
     qv_selected,
     q_supply,
     system
 )
-
-st.header("DIN-Prüfung")
 
 for e in errors:
     st.error(e)
@@ -215,6 +233,8 @@ for c in corrections:
 # -----------------------------
 # PRÜFBERICHT
 # -----------------------------
+st.header("Prüfbericht")
+
 summary = {
     "qv": qv_selected,
     "zu": q_supply,
@@ -232,12 +252,30 @@ report = generate_concept_text(
     project_data
 )
 
-st.text_area("Prüfbericht", report, height=400)
+st.text_area("Bericht", report, height=400)
+
+
+# -----------------------------
+# TESTS
+# -----------------------------
+st.header("Automatische DIN-Tests")
+
+if st.button("🧪 Tests ausführen"):
+
+    results = run_tests(get_test_cases())
+
+    for r in results:
+        if r["Status"] == "PASS":
+            st.success(f"{r['Test']} → PASS")
+        else:
+            st.error(f"{r['Test']} → FAIL: {r['Details']}")
 
 
 # -----------------------------
 # PDF EXPORT
 # -----------------------------
+st.header("Export")
+
 if st.button("📄 PDF Export"):
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
