@@ -1,6 +1,6 @@
 # logic/auto_fix.py
 
-def auto_fix_system(df_rooms, qv_required, q_supply):
+def auto_fix_system(df_rooms, qv_required):
 
     df = df_rooms.copy()
 
@@ -12,7 +12,7 @@ def auto_fix_system(df_rooms, qv_required, q_supply):
             df.loc[i, "Typ"] = "Abluft"
 
     # ---------------------------------
-    # 2. Mindest-Abluft sicherstellen
+    # 2. Mindest-Abluft
     # ---------------------------------
     min_values = {
         "Küche": 60,
@@ -36,16 +36,8 @@ def auto_fix_system(df_rooms, qv_required, q_supply):
 
     for i, row in df.iterrows():
         if row.get("Typ") == "Zuluft":
-            ziel = row.get("Überströmt nach", "")
+            if not row.get("Überströmt nach"):
+                if abluft_raeume:
+                    df.loc[i, "Überströmt nach"] = abluft_raeume[0]
 
-            if ziel == "" and abluft_raeume:
-                df.loc[i, "Überströmt nach"] = abluft_raeume[0]
-
-    # ---------------------------------
-    # 4. Feuchteschutz prüfen
-    # ---------------------------------
-    if q_supply < qv_required:
-        diff = round(qv_required - q_supply)
-        return df, f"Zusätzliche {diff} m³/h erforderlich (ALD vorsehen)."
-
-    return df, "System automatisch korrigiert."
+    return df
