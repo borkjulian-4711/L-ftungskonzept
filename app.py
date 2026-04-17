@@ -69,19 +69,23 @@ st.write("Erforderlicher Volumenstrom:", qv_selected, "m³/h")
 
 
 # -----------------------------
-# RAUMTABELLE (MIT DROPDOWNS)
+# -----------------------------
+# RAUMTABELLE (FIXED DROPDOWNS)
 # -----------------------------
 st.header("Räume & Luftführung")
 
-default_df = pd.DataFrame({
-    "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
-    "Fläche": [20, 15, 6],
-    "Typ": ["Zuluft", "Zuluft", "Abluft"],
-    "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
-    "Innenliegend": [False, False, True],
-    "DIN 18017 Kategorie": ["", "", "R-ZD"],
-    "Überströmt nach": ["Flur", "Flur", ""]
-})
+if "df_rooms" not in st.session_state:
+    st.session_state.df_rooms = pd.DataFrame({
+        "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+        "Fläche": [20, 15, 6],
+        "Typ": ["Zuluft", "Zuluft", "Abluft"],
+        "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+        "Innenliegend": [False, False, True],
+        "DIN 18017 Kategorie": ["", "", "R-ZD"],
+        "Überströmt nach": ["", "", ""]
+    })
+
+df_rooms = st.session_state.df_rooms
 
 typ_options = ["Zuluft", "Überström", "Abluft"]
 
@@ -93,12 +97,14 @@ din_options = [
 
 din18017_options = ["", "R-ZD", "R-BD", "R-PN", "R-PD"]
 
-raumliste = default_df["Raum"].tolist()
+# 👉 WICHTIG: aus AKTUELLEM DF!
+raumliste = df_rooms["Raum"].tolist()
 
-df_rooms = st.data_editor(
-    default_df,
+edited_df = st.data_editor(
+    df_rooms,
     num_rows="dynamic",
     use_container_width=True,
+    key="room_editor",
     column_config={
         "Typ": st.column_config.SelectboxColumn(options=typ_options),
         "Kategorie (DIN 1946-6)": st.column_config.SelectboxColumn(options=din_options),
@@ -108,8 +114,9 @@ df_rooms = st.data_editor(
     }
 )
 
-df_rooms = df_rooms.fillna("")
-
+# 👉 STATE UPDATE (sehr wichtig!)
+st.session_state.df_rooms = edited_df.copy()
+df_rooms = edited_df.fillna("")
 
 # -----------------------------
 # BERECHNUNG
