@@ -28,6 +28,21 @@ st.title("🌀 Lüftungskonzept DIN 1946-6")
 
 
 # -----------------------------
+# SESSION INIT
+# -----------------------------
+if "df_rooms" not in st.session_state:
+    st.session_state.df_rooms = pd.DataFrame({
+        "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+        "Fläche": [20, 15, 6],
+        "Typ": ["Zuluft", "Zuluft", "Abluft"],
+        "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
+        "Innenliegend": [False, False, True],
+        "DIN 18017 Kategorie": ["", "", "R-ZD"],
+        "Überströmt nach": ["", "", ""]
+    })
+
+
+# -----------------------------
 # PROJEKT
 # -----------------------------
 st.header("Projekt")
@@ -69,21 +84,9 @@ st.write("Erforderlicher Volumenstrom:", qv_selected, "m³/h")
 
 
 # -----------------------------
-# -----------------------------
-# RAUMTABELLE (FIXED DROPDOWNS)
+# RAUMTABELLE (DROPDOWNS STABIL)
 # -----------------------------
 st.header("Räume & Luftführung")
-
-if "df_rooms" not in st.session_state:
-    st.session_state.df_rooms = pd.DataFrame({
-        "Raum": ["Wohnzimmer", "Schlafzimmer", "Bad"],
-        "Fläche": [20, 15, 6],
-        "Typ": ["Zuluft", "Zuluft", "Abluft"],
-        "Kategorie (DIN 1946-6)": ["Wohnzimmer", "Schlafzimmer", "Bad"],
-        "Innenliegend": [False, False, True],
-        "DIN 18017 Kategorie": ["", "", "R-ZD"],
-        "Überströmt nach": ["", "", ""]
-    })
 
 df_rooms = st.session_state.df_rooms
 
@@ -97,7 +100,6 @@ din_options = [
 
 din18017_options = ["", "R-ZD", "R-BD", "R-PN", "R-PD"]
 
-# 👉 WICHTIG: aus AKTUELLEM DF!
 raumliste = df_rooms["Raum"].tolist()
 
 edited_df = st.data_editor(
@@ -114,9 +116,10 @@ edited_df = st.data_editor(
     }
 )
 
-# 👉 STATE UPDATE (sehr wichtig!)
+# 👉 WICHTIG: speichern!
 st.session_state.df_rooms = edited_df.copy()
 df_rooms = edited_df.fillna("")
+
 
 # -----------------------------
 # BERECHNUNG
@@ -205,20 +208,22 @@ if not errors:
 
 
 # -----------------------------
-# AUTO-FIX
+# AUTO-FIX (JETZT RICHTIG!)
 # -----------------------------
 st.header("Auto-Fix")
 
-if st.button("🔧 System automatisch korrigieren"):
+if st.button("🔧 Auto-Fix anwenden"):
 
-    df_rooms, msg = auto_fix_system(
-        df_rooms,
-        qv_selected,
-        q_supply
+    fixed_df = auto_fix_system(
+        st.session_state.df_rooms,
+        qv_selected
     )
 
-    st.success(msg)
-    st.dataframe(df_rooms)
+    st.session_state.df_rooms = fixed_df
+
+    st.success("Auto-Fix wurde angewendet")
+
+    st.rerun()
 
 
 # -----------------------------
