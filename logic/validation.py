@@ -1,5 +1,8 @@
 # logic/validation.py
 
+from logic.din18017 import get_din18017_flow
+
+
 def validate_din(df_rooms, qv_required, q_supply, system):
 
     errors = []
@@ -13,6 +16,12 @@ def validate_din(df_rooms, qv_required, q_supply, system):
             if row.get("Typ") != "Abluft":
                 errors.append(
                     f"Innenliegender Raum '{row['Raum']}' muss Abluft sein."
+                )
+
+            din18017_cat = str(row.get("DIN 18017 Kategorie", "")).strip()
+            if not din18017_cat:
+                errors.append(
+                    f"Innenliegender Raum '{row['Raum']}' benötigt eine DIN 18017 Kategorie."
                 )
 
     # ---------------------------------
@@ -33,6 +42,18 @@ def validate_din(df_rooms, qv_required, q_supply, system):
                 errors.append(
                     f"Abluft in '{row['Raum']}' zu gering ({ab} m³/h)."
                 )
+
+            if row.get("Innenliegend", False):
+                din18017_cat = str(row.get("DIN 18017 Kategorie", "")).split(" ")[0]
+                min_18017 = get_din18017_flow(din18017_cat)
+
+                if min_18017 > 0 and ab < min_18017:
+                    errors.append(
+                        (
+                            f"DIN 18017 nicht erfüllt in '{row['Raum']}' "
+                            f"({ab} < {min_18017} m³/h)."
+                        )
+                    )
 
     # ---------------------------------
     # 3. Feuchteschutz
