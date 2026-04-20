@@ -232,10 +232,17 @@ for c in corrections:
 st.header("Prüfbericht")
 
 summary = {
+    "ane": ANE,
+    "system": system,
+    "wind": wind,
+    "aenv": Aenv,
+    "luftdicht": luftdicht,
+    "levels": result.levels,
     "qv": qv_selected,
     "zu": q_supply,
     "ab": q_mech,
     "inf": q_inf,
+    "shaft": q_shaft,
     "status": res["status"]
 }
 
