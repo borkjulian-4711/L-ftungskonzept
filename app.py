@@ -5,26 +5,19 @@ import tempfile
 from config import FIRMA
 import logic.din1946_core as core
 
-from logic.infiltration import (
-    get_ez_din,
-    calculate_infiltration_din,
-    calculate_shaft_flow
-)
-
-from logic.ald import calculate_ald_din
-from logic.system_logic import evaluate_system
 from logic.text_generator import generate_concept_text
-from logic.validation import validate_din
 from logic.correction_engine import generate_corrections
 from logic.auto_fix import auto_fix_system
 
 from logic.test_cases import get_test_cases
 from logic.test_runner import run_tests
+from logic.normative_pipeline import NormativeInput, run_normative_calculation
 
 from export.pdf_generator import create_multi_pdf
 
 
-st.title("🌀 Lüftungskonzept DIN 1946-6")
+st.title("🌀 Lüftungskonzept DIN 1946-6 + DIN 18017")
+st.caption("Kompletter Neuaufbau des Rechenkerns: ein zentraler normativer Pipeline-Lauf steuert Berechnung, Validierung und Nachweis.")
 
 
 # -----------------------------
@@ -121,50 +114,42 @@ st.session_state.df_rooms = edited_df.copy()
 df_rooms = edited_df.fillna("")
 
 
-# -----------------------------
-# BERECHNUNG
-# -----------------------------
-df_rooms = core.distribute_airflows(df_rooms, qv_selected)
-df_rooms = core.apply_exhaust_values(df_rooms)
-
-st.subheader("Berechnete Luftmengen")
-st.dataframe(df_rooms)
-
-
-# -----------------------------
-# INFILTRATION
-# -----------------------------
-st.header("Infiltration")
-
 wind = st.selectbox("Wind", ["windschwach", "windstark"])
 Aenv = st.number_input("Hüllfläche Aenv (m²)", 10.0, 500.0, 200.0)
 luftdicht = st.checkbox("luftdicht")
-
-ez = get_ez_din("EFH", wind, luftdicht)
-q_inf = calculate_infiltration_din(Aenv, ez)
 
 
 # -----------------------------
 # SCHACHT
 # -----------------------------
 shaft = st.checkbox("Schachtlüftung")
-q_shaft = calculate_shaft_flow() if shaft else 0
 
 
 # -----------------------------
-# SYSTEMLOGIK
+# BERECHNUNG (NEUER PIPELINE-LAUF)
 # -----------------------------
-q_mech = df_rooms["Abluft (m³/h)"].sum()
+result = run_normative_calculation(
+    df_rooms,
+    NormativeInput(
+        ane=ANE,
+        level=level,
+        system=system,
+        wind=wind,
+        aenv=Aenv,
+        luftdicht=luftdicht,
+        shaft_enabled=shaft,
+    ),
+)
 
-if system == "freie Lüftung":
-    q_supply = q_inf + q_shaft
+df_rooms = result.rooms
+qv_selected = result.qv_required
+q_inf = result.q_inf
+q_shaft = result.q_shaft
+q_mech = result.q_mech
+q_supply = result.q_supply
 
-elif system == "ventilatorgestützt":
-    df_rooms, zu, ab = core.dimension_ventilation_system(df_rooms, qv_selected)
-    q_supply = zu
-
-elif system == "kombiniert":
-    q_supply = q_mech + q_inf + q_shaft
+st.subheader("Berechnete Luftmengen")
+st.dataframe(df_rooms)
 
 
 # -----------------------------
@@ -172,7 +157,7 @@ elif system == "kombiniert":
 # -----------------------------
 st.header("ALD")
 
-ald = calculate_ald_din(qv_selected, q_supply, wind)
+ald = result.ald
 st.write(ald)
 
 
@@ -181,7 +166,7 @@ st.write(ald)
 # -----------------------------
 st.header("Systembewertung")
 
-res = evaluate_system(q_mech, qv_selected, q_supply)
+res = result.system_result
 st.write("Status:", res["status"])
 
 
@@ -190,12 +175,7 @@ st.write("Status:", res["status"])
 # -----------------------------
 st.header("DIN-Prüfung")
 
-errors, warnings = validate_din(
-    df_rooms,
-    qv_selected,
-    q_supply,
-    system
-)
+errors, warnings = result.errors, result.warnings
 
 for e in errors:
     st.error(e)
@@ -205,6 +185,10 @@ for w in warnings:
 
 if not errors:
     st.success("DIN-Anforderungen erfüllt")
+
+st.subheader("Audit Trail")
+for entry in result.audit_trail:
+    st.caption(f"• {entry}")
 
 
 # -----------------------------
