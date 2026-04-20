@@ -2,9 +2,8 @@
 
 import pandas as pd
 
-import logic.din1946_core as core
-from logic.validation import validate_din
-from logic.ald import calculate_ald_din
+from logic.auto_fix import auto_fix_system
+from logic.normative_pipeline import NormativeInput, run_normative_calculation
 
 
 def run_tests(test_cases):
@@ -21,26 +20,20 @@ def run_tests(test_cases):
 
         df["Überströmt nach"] = ""
 
-        # Berechnung
-        levels = core.calculate_levels(test["ANE"])
-        qv = levels["FL"]
-
-        df = core.distribute_airflows(df, qv)
-        df = core.apply_exhaust_values(df)
-
-        q_mech = df["Abluft (m³/h)"].sum()
-        q_supply = q_mech  # einfache Annahme für Test
-
-        # Validierung
-        errors, warnings = validate_din(
+        result = run_normative_calculation(
             df,
-            qv,
-            q_supply,
-            test["system"]
+            NormativeInput(
+                ane=test["ANE"],
+                level=test.get("level", "FL"),
+                system=test["system"],
+                wind=test.get("wind", "windschwach"),
+                aenv=test.get("Aenv", 200),
+                luftdicht=test.get("luftdicht", False),
+                shaft_enabled=test.get("shaft", False),
+            ),
         )
-
-        # ALD
-        ald = calculate_ald_din(qv, q_supply, "windschwach")
+        errors, warnings = result.errors, result.warnings
+        ald = result.ald
 
         # Bewertung
         passed = True
@@ -58,10 +51,30 @@ def run_tests(test_cases):
                 passed = False
                 reason = "ALD erwartet, aber keiner berechnet"
 
+        if "error_contains" in exp:
+            expected_text = exp["error_contains"]
+            if not any(expected_text in msg for msg in errors):
+                passed = False
+                reason = f"Erwarteter Fehlertext fehlt: {expected_text}"
+
+        if "auto_fix_changes_flows" in exp and exp["auto_fix_changes_flows"]:
+            before = df.copy()
+            before_zu = before.get("Zuluft (m³/h)", pd.Series([0] * len(before))).sum()
+            before_ab = before.get("Abluft (m³/h)", pd.Series([0] * len(before))).sum()
+
+            fixed = auto_fix_system(before, result.qv_required)
+            after_zu = fixed.get("Zuluft (m³/h)", pd.Series([0] * len(fixed))).sum()
+            after_ab = fixed.get("Abluft (m³/h)", pd.Series([0] * len(fixed))).sum()
+
+            if after_zu == before_zu and after_ab == before_ab:
+                passed = False
+                reason = "Auto-Fix hat weder Zuluft- noch Abluftsumme geändert"
+
         results.append({
             "Test": test["name"],
             "Status": "PASS" if passed else "FAIL",
-            "Details": reason
+            "Details": reason,
+            "Warnings": len(warnings),
         })
 
     return results

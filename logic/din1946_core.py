@@ -1,3 +1,5 @@
+from logic.din18017 import get_din18017_flow
+
 # logic/din1946_core.py
 
 # -----------------------------
@@ -91,9 +93,18 @@ def apply_exhaust_values(df):
 
     for i, row in df.iterrows():
         if row["Typ"] == "Abluft":
-            df.loc[i, "Abluft (m³/h)"] = exhaust_table.get(
+            din1946_flow = exhaust_table.get(
                 row["Kategorie (DIN 1946-6)"], 30
             )
+
+            din18017_flow = 0
+            if row.get("Innenliegend", False):
+                din18017_flow = get_din18017_flow(
+                    str(row.get("DIN 18017 Kategorie", "")).split(" ")[0]
+                )
+
+            # Für innenliegende Ablufträume gilt der strengere Wert.
+            df.loc[i, "Abluft (m³/h)"] = max(din1946_flow, din18017_flow)
 
     return df
 

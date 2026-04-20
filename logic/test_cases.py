@@ -27,7 +27,8 @@ def get_test_cases():
             ],
             "expected": {
                 "ald_required": True
-            }
+            },
+            "Aenv": 40
         },
 
         {
@@ -38,7 +39,45 @@ def get_test_cases():
                 {"Raum": "Bad", "Typ": "Zuluft", "Kategorie (DIN 1946-6)": "Bad", "Innenliegend": True}
             ],
             "expected": {
-                "error": True
+                "error": True,
+                "error_contains": "muss Abluft sein"
+            }
+        },
+
+        {
+            "name": "Fehlerfall DIN18017 Kategorie fehlt",
+            "ANE": 75,
+            "system": "freie Lüftung",
+            "rooms": [
+                {"Raum": "Bad innen", "Typ": "Abluft", "Kategorie (DIN 1946-6)": "Bad", "Innenliegend": True}
+            ],
+            "expected": {
+                "error": True,
+                "error_contains": "benötigt eine DIN 18017 Kategorie"
+            }
+        },
+
+        {
+            "name": "Auto-Fix ändert Volumenströme",
+            "ANE": 85,
+            "system": "ventilatorgestützt",
+            "rooms": [
+                {
+                    "Raum": "Bad innen",
+                    "Typ": "Zuluft",
+                    "Kategorie (DIN 1946-6)": "Bad",
+                    "Innenliegend": True,
+                    "DIN 18017 Kategorie": ""
+                },
+                {
+                    "Raum": "Wohnzimmer",
+                    "Typ": "Zuluft",
+                    "Kategorie (DIN 1946-6)": "Wohnzimmer",
+                    "Innenliegend": False
+                }
+            ],
+            "expected": {
+                "auto_fix_changes_flows": True
             }
         }
 

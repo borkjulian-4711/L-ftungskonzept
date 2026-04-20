@@ -1,43 +1,69 @@
 # logic/auto_fix.py
 
-def auto_fix_system(df_rooms, qv_required):
+import logic.din1946_core as core
 
-    df = df_rooms.copy()
 
-    # ---------------------------------
-    # 1. Innenliegende Räume → Abluft
-    # ---------------------------------
-    for i, row in df.iterrows():
-        if row.get("Innenliegend", False):
-            df.loc[i, "Typ"] = "Abluft"
-
-    # ---------------------------------
-    # 2. Mindest-Abluft
-    # ---------------------------------
-    min_values = {
-        "Küche": 60,
-        "Bad": 40,
-        "WC": 30
+def _ensure_required_columns(df):
+    required_defaults = {
+        "Raum": "",
+        "Typ": "Zuluft",
+        "Kategorie (DIN 1946-6)": "",
+        "Innenliegend": False,
+        "DIN 18017 Kategorie": "",
+        "Überströmt nach": "",
     }
 
+    for col, default in required_defaults.items():
+        if col not in df.columns:
+            df[col] = default
+
+    return df
+
+
+def _infer_din18017_category(din1946_category):
+    mapping = {
+        "Bad": "R-ZD",
+        "WC": "R-BD",
+        "Küche": "R-PN",
+    }
+    return mapping.get(str(din1946_category), "R-ZD")
+
+
+def auto_fix_system(df_rooms, qv_required):
+    """
+    Wendet automatische Korrekturen an und berechnet danach Zuluft/Abluft neu.
+    Dadurch werden Volumenströme nach DIN-Logik tatsächlich angepasst
+    (nicht nur Raumtypen/Überströmbeziehungen).
+    """
+
+    df = _ensure_required_columns(df_rooms.copy())
+
+    # ---------------------------------
+    # 1. Innenliegende Räume normgerecht setzen
+    # ---------------------------------
     for i, row in df.iterrows():
-        if row.get("Typ") == "Abluft":
-            kat = row.get("Kategorie (DIN 1946-6)")
-            if kat in min_values:
-                df.loc[i, "Abluft (m³/h)"] = max(
-                    row.get("Abluft (m³/h)", 0),
-                    min_values[kat]
+        if bool(row.get("Innenliegend", False)):
+            df.loc[i, "Typ"] = "Abluft"
+
+            if not str(row.get("DIN 18017 Kategorie", "")).strip():
+                df.loc[i, "DIN 18017 Kategorie"] = _infer_din18017_category(
+                    row.get("Kategorie (DIN 1946-6)")
                 )
 
     # ---------------------------------
-    # 3. Überströmung setzen
+    # 2. Überströmung sicherstellen
     # ---------------------------------
     abluft_raeume = df[df["Typ"] == "Abluft"]["Raum"].tolist()
+    default_target = abluft_raeume[0] if abluft_raeume else ""
 
     for i, row in df.iterrows():
-        if row.get("Typ") == "Zuluft":
-            if not row.get("Überströmt nach"):
-                if abluft_raeume:
-                    df.loc[i, "Überströmt nach"] = abluft_raeume[0]
+        if row.get("Typ") == "Zuluft" and not str(row.get("Überströmt nach", "")).strip():
+            df.loc[i, "Überströmt nach"] = default_target
+
+    # ---------------------------------
+    # 3. Volumenströme vollständig neu berechnen
+    # ---------------------------------
+    df = core.distribute_airflows(df, qv_required)
+    df = core.apply_exhaust_values(df)
 
     return df
